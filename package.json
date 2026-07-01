@@ -8,7 +8,8 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "lint": "eslint src",
-    "test": "vitest run"
+    "test": "vitest run",
+    "package": "npm run build && mkdir -p release && rm -f release/career-copilot-v$npm_package_version.zip && cd dist && zip -rq -X ../release/career-copilot-v$npm_package_version.zip . -x '.*'"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.107.0",

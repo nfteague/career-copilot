@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="440" height="280" font-family="Helvetica, Arial, sans-serif">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#6366f1"/>
+      <stop offset="1" stop-color="#7c3aed"/>
+    </linearGradient>
+  </defs>
+  <rect width="440" height="280" fill="url(#bg)"/>
+  <g transform="translate(60,64)">
+    <rect width="72" height="72" rx="16" fill="#ffffff" opacity="0.12"/>
+    <path d="M59 15 L14 32 L31.5 39.5 Z" fill="#fff"/>
+    <path d="M59 15 L31.5 39.5 L31.5 55 L39 45.5 Z" fill="#fff" opacity="0.85"/>
+  </g>
+  <text x="60" y="196" font-size="34" font-weight="bold" fill="#ffffff">Career Copilot</text>
+  <text x="60" y="228" font-size="16" fill="#e0e7ff">Cover letters from your real career story</text>
+</svg>
