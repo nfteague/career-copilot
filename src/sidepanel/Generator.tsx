@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { CareerProfile, JobContext, Settings, GenerationKind, Preferences, Note } from '../lib/types';
 import { getProvider } from '../lib/providers';
-import { saveProfile } from '../lib/storage';
+import { updateProfile } from '../lib/storage';
 import { NEEDS_INFO_MARKER, NeedsInfo, parseNeedsInfo } from '../lib/prompts';
 import { friendlyError } from '../lib/errors';
 import { getActiveJobContext, hasPageAccess, requestPageAccess } from './tabContext';
@@ -47,7 +47,7 @@ export default function Generator({
 
   async function updatePrefs(next: Preferences) {
     setPrefs(next);
-    await saveProfile({ ...profile, preferences: next });
+    await updateProfile((p) => ({ ...p, preferences: next }));
   }
 
   async function refreshJob() {
@@ -161,12 +161,11 @@ export default function Generator({
 
   // Save the candidate's answers as reusable notes, then regenerate.
   async function addNotesAndRegenerate(contents: string[]) {
-    const next = {
-      ...profile,
+    const next = await updateProfile((p) => ({
+      ...p,
       preferences: prefs,
-      notes: [...profile.notes, ...contents.map(note)],
-    };
-    await saveProfile(next);
+      notes: [...p.notes, ...contents.map(note)],
+    }));
     runWith(next);
   }
 
@@ -185,8 +184,11 @@ export default function Generator({
     const text = refine.trim();
     let p: CareerProfile = { ...profile, preferences: prefs };
     if (text && saveRefine) {
-      p = { ...p, notes: [...profile.notes, note(text)] };
-      await saveProfile(p);
+      p = await updateProfile((latest) => ({
+        ...latest,
+        preferences: prefs,
+        notes: [...latest.notes, note(text)],
+      }));
       setRefine('');
       setSaveRefine(false);
     }

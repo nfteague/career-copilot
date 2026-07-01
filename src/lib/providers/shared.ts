@@ -1,6 +1,9 @@
 import { CareerProfile, JobContext, GenerationKind, emptyProfile } from '../types';
 
 export const MAX_OUTPUT_TOKENS = 8000;
+// Transcribing a long PDF (e.g. an interview transcript) needs far more output
+// room than a draft does.
+export const PDF_TEXT_MAX_TOKENS = 16000;
 
 export interface GenerateArgs {
   kind: GenerationKind;
@@ -20,7 +23,8 @@ export interface LLMProvider {
   ingestPdf(base64: string, base?: CareerProfile): Promise<CareerProfile>;
   // Extract the plain text of a supporting document so it can be stored and fed
   // into generation context (without parsing it into the structured profile).
-  pdfToText(base64: string): Promise<string>;
+  // `truncated` is true when the model ran out of output room mid-document.
+  pdfToText(base64: string): Promise<{ text: string; truncated: boolean }>;
   generate(args: GenerateArgs): Promise<string>;
 }
 

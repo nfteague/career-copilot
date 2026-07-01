@@ -11,6 +11,7 @@ import {
   GenerateArgs,
   LLMProvider,
   MAX_OUTPUT_TOKENS,
+  PDF_TEXT_MAX_TOKENS,
   PDF_TO_TEXT_PROMPT,
   ExtractedProfile,
   toProfile,
@@ -70,10 +71,10 @@ export class OpenAIProvider implements LLMProvider {
     return toProfile(extracted, base);
   }
 
-  async pdfToText(base64: string): Promise<string> {
+  async pdfToText(base64: string): Promise<{ text: string; truncated: boolean }> {
     const res = await this.client.chat.completions.create({
       model: this.model,
-      max_completion_tokens: MAX_OUTPUT_TOKENS,
+      max_completion_tokens: PDF_TEXT_MAX_TOKENS,
       messages: [
         {
           role: 'user',
@@ -87,7 +88,10 @@ export class OpenAIProvider implements LLMProvider {
         },
       ],
     });
-    return res.choices[0]?.message?.content ?? '';
+    return {
+      text: res.choices[0]?.message?.content ?? '',
+      truncated: res.choices[0]?.finish_reason === 'length',
+    };
   }
 
   async generate(args: GenerateArgs): Promise<string> {

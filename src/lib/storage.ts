@@ -5,6 +5,7 @@ import { CareerProfile, QuickCopy, Settings, activeCreds, emptyProfile } from '.
 // in direct calls to the Anthropic API.
 
 const PROFILE_KEY = 'careerProfile';
+const BACKUP_KEY = 'careerProfileBackup';
 const SETTINGS_KEY = 'settings';
 const QUICKCOPY_KEY = 'quickCopies';
 
@@ -26,6 +27,42 @@ export async function getProfile(): Promise<CareerProfile> {
 export async function saveProfile(profile: CareerProfile): Promise<void> {
   profile.updatedAt = new Date().toISOString();
   await chrome.storage.local.set({ [PROFILE_KEY]: profile });
+}
+
+// Read-modify-write against the LATEST stored profile. All partial updates
+// (notes, docs, prefs, field edits) should go through this rather than
+// spreading a possibly-stale prop, so two surfaces can't clobber each other.
+export async function updateProfile(
+  fn: (latest: CareerProfile) => CareerProfile,
+): Promise<CareerProfile> {
+  const next = fn(await getProfile());
+  next.updatedAt = new Date().toISOString();
+  await chrome.storage.local.set({ [PROFILE_KEY]: next });
+  return next;
+}
+
+// Safety net around destructive operations (ingest merges, clear-all): keep
+// one snapshot of the profile as it was before, restorable from the UI.
+export async function backupProfile(): Promise<void> {
+  const current = await getProfile();
+  await chrome.storage.local.set({ [BACKUP_KEY]: current });
+}
+
+export async function hasProfileBackup(): Promise<boolean> {
+  return (await chrome.storage.local.get(BACKUP_KEY))[BACKUP_KEY] !== undefined;
+}
+
+// Restore the snapshot, swapping the current profile into the backup slot so a
+// second restore undoes the restore.
+export async function restoreProfileBackup(): Promise<CareerProfile | null> {
+  const stored = (await chrome.storage.local.get(BACKUP_KEY))[BACKUP_KEY] as
+    | CareerProfile
+    | undefined;
+  if (!stored) return null;
+  const current = await getProfile();
+  const restored = { ...emptyProfile(), ...stored };
+  await chrome.storage.local.set({ [PROFILE_KEY]: restored, [BACKUP_KEY]: current });
+  return restored;
 }
 
 export async function getSettings(): Promise<Settings> {

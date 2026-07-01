@@ -1,8 +1,15 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { CareerProfile, Settings, SupportingDoc, emptyProfile } from '../lib/types';
-import { saveProfile } from '../lib/storage';
+import {
+  saveProfile,
+  updateProfile,
+  backupProfile,
+  hasProfileBackup,
+  restoreProfileBackup,
+} from '../lib/storage';
 import { getProvider } from '../lib/providers';
 import { friendlyError } from '../lib/errors';
+import { MAX_DOC_CHARS } from '../lib/prompts';
 import { fileToBase64 } from './tabContext';
 import ProfileEditor from './ProfileEditor';
 
@@ -28,20 +35,35 @@ export default function ProfileSetup({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [dump, setDump] = useState('');
+  const [canUndo, setCanUndo] = useState(false);
+
+  useEffect(() => {
+    hasProfileBackup().then(setCanUndo);
+  }, []);
 
   async function ingest(fn: () => Promise<CareerProfile>) {
     setBusy(true);
     setError('');
     try {
       const next = await fn();
+      // Snapshot the pre-ingest profile first — model-driven merges can drop
+      // data, and this makes every import undoable.
+      await backupProfile();
       await saveProfile(next);
+      setCanUndo(true);
       onChange(next);
       setTab('review');
+      setDump('');
     } catch (e) {
       setError(friendlyError(e));
     } finally {
       setBusy(false);
     }
+  }
+
+  async function undo() {
+    const restored = await restoreProfileBackup();
+    if (restored) onChange(restored);
   }
 
   async function onFile(e: React.ChangeEvent<HTMLInputElement>) {
@@ -57,16 +79,26 @@ export default function ProfileSetup({
   }
 
   async function updatePartial(patch: Partial<CareerProfile>) {
-    const next = { ...profile, ...patch };
-    await saveProfile(next);
-    onChange(next);
+    onChange(await updateProfile((p) => ({ ...p, ...patch })));
   }
 
   async function clearAll() {
+    await backupProfile(); // clearing everything must be undoable too
     const fresh = emptyProfile();
     await saveProfile(fresh);
+    setCanUndo(true);
     onChange(fresh);
     setTab('upload');
+  }
+
+  function exportProfile() {
+    const blob = new Blob([JSON.stringify(profile, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'career-copilot-profile.json';
+    a.click();
+    URL.revokeObjectURL(url);
   }
 
   return (
@@ -131,7 +163,26 @@ export default function ProfileSetup({
       )}
 
       {tab === 'review' && (
-        <ProfileEditor profile={profile} onUpdate={updatePartial} onClear={clearAll} />
+        <div className="space-y-3">
+          <div className="flex items-center gap-4 text-xs">
+            <button
+              onClick={exportProfile}
+              className="font-medium text-slate-500 underline hover:text-slate-800"
+            >
+              Export profile (JSON)
+            </button>
+            {canUndo && (
+              <button
+                onClick={undo}
+                title="Swap back to the profile as it was before the last import or clear"
+                className="font-medium text-slate-500 underline hover:text-slate-800"
+              >
+                Restore previous version
+              </button>
+            )}
+          </div>
+          <ProfileEditor profile={profile} onUpdate={updatePartial} onClear={clearAll} />
+        </div>
       )}
     </div>
   );
@@ -154,16 +205,34 @@ function DocumentsTab({
   const [body, setBody] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
 
-  async function persist(docs: SupportingDoc[]) {
-    const next = { ...profile, supportingDocs: docs };
-    await saveProfile(next);
-    onChange(next);
+  async function addDoc(doc: SupportingDoc) {
+    onChange(await updateProfile((p) => ({ ...p, supportingDocs: [...p.supportingDocs, doc] })));
+  }
+
+  async function removeDoc(id: string) {
+    onChange(
+      await updateProfile((p) => ({
+        ...p,
+        supportingDocs: p.supportingDocs.filter((x) => x.id !== id),
+      })),
+    );
+  }
+
+  // Warn at add time — when the user can still act on it — rather than
+  // silently truncating at generation time.
+  function sizeNotice(length: number): string {
+    return length > MAX_DOC_CHARS
+      ? `This document is ${length.toLocaleString()} characters — only the first ${MAX_DOC_CHARS.toLocaleString()} are included when drafting. Consider trimming it to the parts that matter.`
+      : '';
   }
 
   async function addText() {
     if (!label.trim() || !body.trim()) return;
-    await persist([...profile.supportingDocs, newDoc(label, body.trim())]);
+    const content = body.trim();
+    await addDoc(newDoc(label, content));
+    setNotice(sizeNotice(content.length));
     setLabel('');
     setBody('');
   }
@@ -180,11 +249,18 @@ function DocumentsTab({
     const isPdf = file.type === 'application/pdf' || name.endsWith('.pdf');
     setBusy(true);
     setError('');
+    setNotice('');
     try {
       let content: string;
+      let truncNote = '';
       if (isPdf) {
         // PDFs need the model to read them into text.
-        content = await getProvider(settings).pdfToText(await fileToBase64(file));
+        const res = await getProvider(settings).pdfToText(await fileToBase64(file));
+        content = res.text;
+        if (res.truncated) {
+          truncNote =
+            'That PDF was longer than the model could transcribe in one pass — the beginning was captured. Consider splitting it and uploading the rest separately.';
+        }
       } else {
         // Text-based files (JSON transcripts, TXT, MD, CSV) are stored as-is.
         content = await file.text();
@@ -201,7 +277,8 @@ function DocumentsTab({
         setError('That file appears to be empty.');
         return;
       }
-      await persist([...profile.supportingDocs, newDoc(label, content)]);
+      await addDoc(newDoc(label, content));
+      setNotice(truncNote || sizeNotice(content.length));
       setLabel('');
     } catch (err) {
       setError(friendlyError(err));
@@ -232,7 +309,7 @@ function DocumentsTab({
                 </span>
               </span>
               <button
-                onClick={() => persist(profile.supportingDocs.filter((x) => x.id !== d.id))}
+                onClick={() => removeDoc(d.id)}
                 className="text-xs text-slate-400 hover:text-red-600"
               >
                 Remove
@@ -243,6 +320,7 @@ function DocumentsTab({
       )}
 
       {error && <p className="rounded-md bg-red-50 px-3 py-2 text-xs text-red-700">{error}</p>}
+      {notice && <p className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">{notice}</p>}
       {busy && <p className="text-xs text-slate-500">Reading document…</p>}
 
       <div className="space-y-2 rounded-md border border-slate-200 p-3">
