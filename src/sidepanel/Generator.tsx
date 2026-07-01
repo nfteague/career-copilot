@@ -3,7 +3,8 @@ import { CareerProfile, JobContext, Settings, GenerationKind, Preferences, Note 
 import { getProvider } from '../lib/providers';
 import { saveProfile } from '../lib/storage';
 import { NEEDS_INFO_MARKER, NeedsInfo, parseNeedsInfo } from '../lib/prompts';
-import { getActiveJobContext } from './tabContext';
+import { friendlyError } from '../lib/errors';
+import { getActiveJobContext, hasPageAccess, requestPageAccess } from './tabContext';
 import PreferencesEditor from './PreferencesEditor';
 
 const EMPTY_JOB: JobContext = { url: '', source: '', questions: [] };
@@ -25,7 +26,7 @@ export default function Generator({
   const [step, setStep] = useState<'setup' | 'result'>('setup');
 
   const [job, setJob] = useState<JobContext>(EMPTY_JOB);
-  const [detecting, setDetecting] = useState(true);
+  const [detecting, setDetecting] = useState(false);
   const [detectNote, setDetectNote] = useState('');
   const [kind, setKind] = useState<GenerationKind>('cover_letter');
   const [question, setQuestion] = useState('');
@@ -65,12 +66,28 @@ export default function Generator({
     setDetectNote(found ? '' : 'No job details found on this page — fill them in below.');
   }
 
+  // "Get Job" — the user gesture that requests page access the first time,
+  // then reads the current tab. Once granted, detection runs automatically.
+  async function getJob() {
+    if (!(await hasPageAccess()) && !(await requestPageAccess())) {
+      setDetectNote(
+        'Career Copilot needs permission to read the page to pull the job in automatically. You can also fill the details in manually.',
+      );
+      return;
+    }
+    await refreshJob();
+  }
+
+  // Auto-detect on open only when the user has already granted page access.
   useEffect(() => {
-    refreshJob();
+    hasPageAccess().then((granted) => {
+      if (granted) refreshJob();
+    });
   }, []);
 
   // Generate against a profile snapshot. `force` skips the sufficiency gate.
   async function runWith(p: CareerProfile, force = false) {
+    abortRef.current?.abort(); // never let two runs stream into the same output
     setBusy(true);
     setError('');
     setOutput('');
@@ -115,16 +132,23 @@ export default function Generator({
         setNeedsInfo(ni);
         setAnswers({});
         setOutput('');
+      } else if (!force && buffer.trimStart().startsWith(NEEDS_INFO_MARKER)) {
+        // The model asked for more info but the body was unparseable — never
+        // show the raw marker as if it were the draft.
+        setOutput('');
+        setError('The model wanted more context but the response couldn’t be read. Try generating again.');
       } else {
         setOutput(buffer);
       }
     } catch (e) {
       if (!controller.signal.aborted) {
-        setError(e instanceof Error ? e.message : 'Generation failed.');
+        setError(friendlyError(e));
       }
     } finally {
-      setBusy(false);
-      abortRef.current = null;
+      if (abortRef.current === controller) {
+        setBusy(false);
+        abortRef.current = null;
+      }
     }
   }
 
@@ -199,7 +223,7 @@ export default function Generator({
           detecting={detecting}
           note={detectNote}
           onChange={setJob}
-          onRefresh={refreshJob}
+          onGetJob={getJob}
         />
 
         <div className="flex gap-1 rounded-lg bg-slate-100 p-1 text-xs">
@@ -409,14 +433,48 @@ function JobEditor({
   detecting,
   note,
   onChange,
-  onRefresh,
+  onGetJob,
 }: {
   job: JobContext;
   detecting: boolean;
   note: string;
   onChange: (j: JobContext) => void;
-  onRefresh: () => void;
+  onGetJob: () => void;
 }) {
+  // When nothing is detected yet, a wall of blank inputs is confusing — show a
+  // single "Get Job" action (which also requests page access on first use)
+  // with a manual-entry escape hatch instead.
+  const [manual, setManual] = useState(false);
+  const hasDetails = !!job.company || !!job.role || !!job.jobDescription;
+
+  if (!hasDetails && !manual) {
+    return (
+      <div className="rounded-md border border-slate-200 bg-white p-3">
+        <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+          Target role
+        </span>
+        <p className="mt-2 text-sm text-slate-600">
+          On the job posting's tab? Pull the company, role, and description straight from the page.
+        </p>
+        <button
+          onClick={onGetJob}
+          disabled={detecting}
+          className="mt-2 flex w-full items-center justify-center gap-2 rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-40"
+        >
+          {detecting && <Spinner />}
+          {detecting ? 'Reading the page…' : 'Get Job'}
+        </button>
+        {note && <p className="mt-2 text-xs text-amber-700">{note}</p>}
+        <button
+          onClick={() => setManual(true)}
+          className="mt-2 text-xs font-medium text-slate-500 underline hover:text-slate-800"
+        >
+          or enter the details manually
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="rounded-md border border-slate-200 bg-white p-3">
       <div className="mb-2 flex items-center justify-between">
@@ -424,7 +482,7 @@ function JobEditor({
           Target role
         </span>
         <button
-          onClick={onRefresh}
+          onClick={onGetJob}
           disabled={detecting}
           title="Re-detect from the current page"
           className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-50"

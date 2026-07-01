@@ -1,6 +1,28 @@
 import { JobContext } from '../lib/types';
 import { detectJobContext } from '../content/detect';
 
+// Host access is optional (nothing granted at install). The "Get Job" button
+// requests it on first use; once granted, detection runs automatically from
+// then on. chrome.permissions.request must run inside a user gesture, so it is
+// only ever called from a click handler.
+const PAGE_ORIGINS = { origins: ['http://*/*', 'https://*/*'] };
+
+export async function hasPageAccess(): Promise<boolean> {
+  try {
+    return await chrome.permissions.contains(PAGE_ORIGINS);
+  } catch {
+    return false;
+  }
+}
+
+export async function requestPageAccess(): Promise<boolean> {
+  try {
+    return await chrome.permissions.request(PAGE_ORIGINS);
+  } catch {
+    return false;
+  }
+}
+
 // Inject the detector into the active tab on demand and read its return value.
 // This works on tabs that were already open before the extension loaded (a
 // declared content script would not) and re-runs cleanly after SPA navigation.

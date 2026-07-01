@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#6366f1"/>
+      <stop offset="1" stop-color="#7c3aed"/>
+    </linearGradient>
+  </defs>
+  <rect width="128" height="128" rx="28" fill="url(#bg)"/>
+  <!-- Paper plane: body + folded tail -->
+  <path d="M106 26 L24 58 L56 71 Z" fill="#ffffff"/>
+  <path d="M106 26 L56 71 L56 99 L70 82 Z" fill="#ffffff" opacity="0.85"/>
+  <path d="M106 26 L56 71 L70 82 Z" fill="#e0e7ff"/>
+  <!-- Spark -->
+  <path d="M96 88 l3.2 7.8 7.8 3.2 -7.8 3.2 -3.2 7.8 -3.2 -7.8 -7.8 -3.2 7.8 -3.2 Z" fill="#ffffff" opacity="0.9"/>
+</svg>
