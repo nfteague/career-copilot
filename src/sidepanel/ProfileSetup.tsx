@@ -75,7 +75,7 @@ export default function ProfileSetup({
     }
     const base64 = await fileToBase64(file);
     // Merge onto the existing profile so narrative/preferences survive re-ingest.
-    await ingest(() => getProvider(settings).ingestPdf(base64, profile));
+    await ingest(async () => (await getProvider(settings)).ingestPdf(base64, profile));
   }
 
   async function updatePartial(patch: Partial<CareerProfile>) {
@@ -108,6 +108,7 @@ export default function ProfileSetup({
           <button
             key={t}
             onClick={() => setTab(t)}
+            aria-pressed={tab === t}
             className={`flex-1 rounded-md px-2 py-1.5 font-medium ${
               tab === t ? 'bg-white shadow-sm' : 'text-slate-500'
             }`}
@@ -117,8 +118,16 @@ export default function ProfileSetup({
         ))}
       </div>
 
-      {error && <p className="rounded-md bg-red-50 px-3 py-2 text-xs text-red-700">{error}</p>}
-      {busy && <p className="text-xs text-slate-500">Reading and structuring… this takes a few seconds.</p>}
+      {error && (
+        <p role="alert" className="rounded-md bg-red-50 px-3 py-2 text-xs text-red-700">
+          {error}
+        </p>
+      )}
+      {busy && (
+        <p role="status" className="text-xs text-slate-500">
+          Reading and structuring… this takes a few seconds.
+        </p>
+      )}
 
       {tab === 'upload' && (
         <div className="space-y-2">
@@ -145,12 +154,13 @@ export default function ProfileSetup({
             value={dump}
             onChange={(e) => setDump(e.target.value)}
             rows={10}
+            aria-label="Brain-dump text"
             placeholder="At Acme I led the payments rewrite that cut checkout failures 30%…"
             className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
           />
           <button
             disabled={busy || !dump.trim()}
-            onClick={() => ingest(() => getProvider(settings).ingestText(dump, profile))}
+            onClick={() => ingest(async () => (await getProvider(settings)).ingestText(dump, profile))}
             className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-40"
           >
             Structure this
@@ -255,7 +265,8 @@ function DocumentsTab({
       let truncNote = '';
       if (isPdf) {
         // PDFs need the model to read them into text.
-        const res = await getProvider(settings).pdfToText(await fileToBase64(file));
+        const provider = await getProvider(settings);
+        const res = await provider.pdfToText(await fileToBase64(file));
         content = res.text;
         if (res.truncated) {
           truncNote =
@@ -319,14 +330,27 @@ function DocumentsTab({
         </ul>
       )}
 
-      {error && <p className="rounded-md bg-red-50 px-3 py-2 text-xs text-red-700">{error}</p>}
-      {notice && <p className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">{notice}</p>}
-      {busy && <p className="text-xs text-slate-500">Reading document…</p>}
+      {error && (
+        <p role="alert" className="rounded-md bg-red-50 px-3 py-2 text-xs text-red-700">
+          {error}
+        </p>
+      )}
+      {notice && (
+        <p role="status" className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">
+          {notice}
+        </p>
+      )}
+      {busy && (
+        <p role="status" className="text-xs text-slate-500">
+          Reading document…
+        </p>
+      )}
 
       <div className="space-y-2 rounded-md border border-slate-200 p-3">
         <input
           value={label}
           onChange={(e) => setLabel(e.target.value)}
+          aria-label="Document label"
           placeholder="Label (e.g. Marketing case study)"
           className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
         />
@@ -334,6 +358,7 @@ function DocumentsTab({
           value={body}
           onChange={(e) => setBody(e.target.value)}
           rows={4}
+          aria-label="Document text"
           placeholder="Paste the document text…"
           className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
         />

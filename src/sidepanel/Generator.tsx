@@ -110,7 +110,8 @@ export default function Generator({
     let buffer = '';
     let mode: 'unknown' | 'draft' | 'needs' = 'unknown';
     try {
-      await getProvider(settings).generate({
+      const provider = await getProvider(settings);
+      await provider.generate({
         kind,
         profile: p,
         job,
@@ -231,6 +232,7 @@ export default function Generator({
         <div className="flex gap-1 rounded-lg bg-slate-100 p-1 text-xs">
           <button
             onClick={() => setKind('cover_letter')}
+            aria-pressed={kind === 'cover_letter'}
             className={`flex-1 rounded-md px-2 py-1.5 font-medium ${
               kind === 'cover_letter' ? 'bg-white shadow-sm' : 'text-slate-500'
             }`}
@@ -239,6 +241,7 @@ export default function Generator({
           </button>
           <button
             onClick={() => setKind('question_answer')}
+            aria-pressed={kind === 'question_answer'}
             className={`flex-1 rounded-md px-2 py-1.5 font-medium ${
               kind === 'question_answer' ? 'bg-white shadow-sm' : 'text-slate-500'
             }`}
@@ -251,6 +254,7 @@ export default function Generator({
           <input
             value={instruction}
             onChange={(e) => setInstruction(e.target.value)}
+            aria-label="Optional steering for the cover letter"
             placeholder="Optional: emphasize my startup experience…"
             className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
           />
@@ -259,6 +263,7 @@ export default function Generator({
             {job.questions.length > 0 && (
               <select
                 value=""
+                aria-label="Questions detected on this page"
                 onChange={(e) => e.target.value && setQuestion(e.target.value)}
                 className="w-full rounded-md border border-slate-300 px-2 py-2 text-sm"
               >
@@ -276,6 +281,7 @@ export default function Generator({
               value={question}
               onChange={(e) => setQuestion(e.target.value)}
               rows={3}
+              aria-label="Application question"
               placeholder="Paste or type the application question…"
               className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
             />
@@ -321,7 +327,11 @@ export default function Generator({
         )}
       </div>
 
-      {error && <p className="rounded-md bg-red-50 px-3 py-2 text-xs text-red-700">{error}</p>}
+      {error && (
+        <p role="alert" className="rounded-md bg-red-50 px-3 py-2 text-xs text-red-700">
+          {error}
+        </p>
+      )}
 
       {busy && !output && !needsInfo && (
         <div className="flex items-center justify-center gap-2 rounded-md border border-slate-200 bg-white py-12 text-sm text-slate-500">
@@ -374,6 +384,7 @@ export default function Generator({
             value={output}
             onChange={(e) => setOutput(e.target.value)}
             rows={16}
+            aria-label="Generated draft"
             className="w-full whitespace-pre-wrap rounded-md border border-slate-200 bg-white p-3 text-sm leading-relaxed"
           />
           <button
@@ -394,6 +405,7 @@ export default function Generator({
             value={refine}
             onChange={(e) => setRefine(e.target.value)}
             rows={3}
+            aria-label="Reprompt or additional context"
             placeholder="e.g. “Make it more concise,” or “I also led the payments migration that cut failures 30%.”"
             className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm"
           />
@@ -419,7 +431,7 @@ export default function Generator({
 
 function Spinner() {
   return (
-    <svg className="h-4 w-4 animate-spin text-slate-400" viewBox="0 0 24 24" fill="none">
+    <svg aria-hidden="true" className="h-4 w-4 animate-spin text-slate-400" viewBox="0 0 24 24" fill="none">
       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
       <path
         className="opacity-75"
@@ -466,7 +478,11 @@ function JobEditor({
           {detecting && <Spinner />}
           {detecting ? 'Reading the page…' : 'Get Job'}
         </button>
-        {note && <p className="mt-2 text-xs text-amber-700">{note}</p>}
+        {note && (
+        <p role="status" className="mt-2 text-xs text-amber-700">
+          {note}
+        </p>
+      )}
         <button
           onClick={() => setManual(true)}
           className="mt-2 text-xs font-medium text-slate-500 underline hover:text-slate-800"
@@ -487,9 +503,11 @@ function JobEditor({
           onClick={onGetJob}
           disabled={detecting}
           title="Re-detect from the current page"
+          aria-label="Re-detect job details from the current page"
           className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-50"
         >
           <svg
+            aria-hidden="true"
             xmlns="http://www.w3.org/2000/svg"
             viewBox="0 0 24 24"
             fill="none"
@@ -508,12 +526,14 @@ function JobEditor({
         <input
           value={job.company ?? ''}
           onChange={(e) => onChange({ ...job, company: e.target.value })}
+          aria-label="Company"
           placeholder="Company"
           className="rounded-md border border-slate-300 px-2 py-1.5 text-sm"
         />
         <input
           value={job.role ?? ''}
           onChange={(e) => onChange({ ...job, role: e.target.value })}
+          aria-label="Role"
           placeholder="Role"
           className="rounded-md border border-slate-300 px-2 py-1.5 text-sm"
         />
@@ -522,10 +542,15 @@ function JobEditor({
         value={job.jobDescription ?? ''}
         onChange={(e) => onChange({ ...job, jobDescription: e.target.value })}
         rows={3}
+        aria-label="Job description"
         placeholder="Job description (auto-detected, or paste it)"
         className="mt-2 w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm"
       />
-      {note && <p className="mt-2 text-xs text-amber-700">{note}</p>}
+      {note && (
+        <p role="status" className="mt-2 text-xs text-amber-700">
+          {note}
+        </p>
+      )}
     </div>
   );
 }

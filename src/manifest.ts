@@ -4,6 +4,8 @@ export default defineManifest({
   manifest_version: 3,
   name: 'Career Copilot',
   version: '0.1.0',
+  // chrome.sidePanel requires 114; everything else is older.
+  minimum_chrome_version: '114',
   description:
     'Drafts tailored cover letters and answers job-application questions from your full career history.',
   icons: {

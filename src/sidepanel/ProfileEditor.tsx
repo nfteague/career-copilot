@@ -348,6 +348,7 @@ function SkillChips({ skills, onChange }: { skills: string[]; onChange: (xs: str
               add();
             }
           }}
+          aria-label="Add a skill"
           placeholder="Add a skill, press Enter"
           className="flex-1 rounded-md border border-slate-300 px-2 py-1.5 text-sm"
         />
@@ -391,6 +392,7 @@ function NotesEditor({ notes, onChange }: { notes: Note[]; onChange: (xs: Note[]
         value={text}
         onChange={(e) => setText(e.target.value)}
         rows={2}
+        aria-label="New note"
         placeholder="Add a fact, story, or preference to use on every draft…"
         className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm"
       />

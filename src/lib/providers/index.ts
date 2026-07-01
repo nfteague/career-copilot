@@ -1,23 +1,20 @@
-import Anthropic from '@anthropic-ai/sdk';
-import OpenAI from 'openai';
 import { Settings, activeCreds } from '../types';
 import { LLMProvider } from './shared';
-import { AnthropicProvider } from './anthropic';
-import { OpenAIProvider } from './openai';
 import { friendlyError } from '../errors';
 
 export type { LLMProvider, GenerateArgs } from './shared';
 
-// Build the provider for the currently selected option in settings.
-export function getProvider(settings: Settings): LLMProvider {
+// Build the provider for the currently selected option in settings. The SDKs
+// are dynamic imports so the panel shell loads without either vendor bundle;
+// only the selected provider's chunk is ever fetched, on first use.
+export async function getProvider(settings: Settings): Promise<LLMProvider> {
   const { apiKey, model } = activeCreds(settings);
-  switch (settings.provider) {
-    case 'openai':
-      return new OpenAIProvider(apiKey, model);
-    case 'anthropic':
-    default:
-      return new AnthropicProvider(apiKey, model);
+  if (settings.provider === 'openai') {
+    const { OpenAIProvider } = await import('./openai');
+    return new OpenAIProvider(apiKey, model);
   }
+  const { AnthropicProvider } = await import('./anthropic');
+  return new AnthropicProvider(apiKey, model);
 }
 
 // Verify the active key with a free models-list call so the user learns about
@@ -27,8 +24,10 @@ export async function checkCredentials(settings: Settings): Promise<string | nul
   const { apiKey } = activeCreds(settings);
   try {
     if (settings.provider === 'openai') {
+      const { default: OpenAI } = await import('openai');
       await new OpenAI({ apiKey, dangerouslyAllowBrowser: true }).models.list();
     } else {
+      const { default: Anthropic } = await import('@anthropic-ai/sdk');
       await new Anthropic({ apiKey, dangerouslyAllowBrowser: true }).models.list({ limit: 1 });
     }
     return null;

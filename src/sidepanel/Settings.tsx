@@ -136,7 +136,9 @@ export default function SettingsView({
       </button>
 
       {keyWarning && (
-        <p className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">{keyWarning}</p>
+        <p role="alert" className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">
+          {keyWarning}
+        </p>
       )}
 
       <p className="text-xs text-slate-400">

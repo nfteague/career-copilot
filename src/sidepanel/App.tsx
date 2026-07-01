@@ -90,6 +90,7 @@ function NavButton({
     <button
       onClick={onClick}
       disabled={disabled}
+      aria-current={active ? 'page' : undefined}
       className={`rounded-md px-2.5 py-1 font-medium ${
         active ? 'bg-slate-900 text-white' : 'text-slate-500 hover:bg-slate-100'
       } disabled:opacity-30`}

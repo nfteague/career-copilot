@@ -55,9 +55,11 @@ export default function QuickCopyView() {
               <button
                 onClick={() => persist(items.filter((x) => x.id !== item.id))}
                 title="Delete"
+                aria-label={`Delete ${item.label}`}
                 className="rounded p-2 text-slate-400 hover:bg-slate-100 hover:text-red-600"
               >
                 <svg
+                  aria-hidden="true"
                   xmlns="http://www.w3.org/2000/svg"
                   viewBox="0 0 24 24"
                   fill="none"
@@ -83,6 +85,7 @@ export default function QuickCopyView() {
         <input
           value={label}
           onChange={(e) => setLabel(e.target.value)}
+          aria-label="Label"
           placeholder="Label (e.g. Portfolio URL)"
           className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
         />
@@ -92,6 +95,7 @@ export default function QuickCopyView() {
           onKeyDown={(e) => {
             if (e.key === 'Enter') add();
           }}
+          aria-label="Value to copy"
           placeholder="Value to copy"
           className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
         />
