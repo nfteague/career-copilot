@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { CareerProfile, Settings, SupportingDoc, emptyProfile } from '../lib/types';
 import { saveProfile } from '../lib/storage';
 import { getProvider } from '../lib/providers';
+import { friendlyError } from '../lib/errors';
 import { fileToBase64 } from './tabContext';
 import ProfileEditor from './ProfileEditor';
 
@@ -37,7 +38,7 @@ export default function ProfileSetup({
       onChange(next);
       setTab('review');
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Something went wrong.');
+      setError(friendlyError(e));
     } finally {
       setBusy(false);
     }
@@ -203,7 +204,7 @@ function DocumentsTab({
       await persist([...profile.supportingDocs, newDoc(label, content)]);
       setLabel('');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to read the document.');
+      setError(friendlyError(err));
     } finally {
       setBusy(false);
     }

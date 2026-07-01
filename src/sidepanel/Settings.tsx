@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { Settings, Provider } from '../lib/types';
+import { Settings, Provider, activeCreds } from '../lib/types';
 import { saveSettings } from '../lib/storage';
+import { checkCredentials } from '../lib/providers';
 
 const MODELS: Record<Provider, { value: string; label: string }[]> = {
   anthropic: [
@@ -37,6 +38,8 @@ export default function SettingsView({
 }) {
   const [s, setS] = useState<Settings>(settings);
   const [saved, setSaved] = useState(false);
+  const [checking, setChecking] = useState(false);
+  const [keyWarning, setKeyWarning] = useState('');
 
   const provider = s.provider;
   const creds = s[provider];
@@ -54,8 +57,20 @@ export default function SettingsView({
       ...s,
       [provider]: { ...creds, apiKey: creds.apiKey.trim() },
     };
+    // Save first (never trap the user behind a network check), then verify the
+    // key with a free call and surface the result.
     await saveSettings(next);
     onSaved(next);
+    setKeyWarning('');
+    if (activeCreds(next).apiKey) {
+      setChecking(true);
+      const problem = await checkCredentials(next);
+      setChecking(false);
+      if (problem) {
+        setKeyWarning(`Saved, but the key check failed: ${problem}`);
+        return;
+      }
+    }
     setSaved(true);
     setTimeout(() => setSaved(false), 1500);
   }
@@ -114,10 +129,15 @@ export default function SettingsView({
 
       <button
         onClick={save}
-        className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700"
+        disabled={checking}
+        className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-40"
       >
-        {saved ? 'Saved ✓' : 'Save'}
+        {checking ? 'Checking key…' : saved ? 'Saved ✓ — key works' : 'Save'}
       </button>
+
+      {keyWarning && (
+        <p className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">{keyWarning}</p>
+      )}
 
       <p className="text-xs text-slate-400">
         Keys are kept per provider — switching back doesn't lose the other one.
