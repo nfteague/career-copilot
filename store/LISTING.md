@@ -73,8 +73,9 @@ Everything to copy-paste into the Developer Dashboard, plus the answers for the 
 - Everything else (health, financial, location, web history, user activity, personal communications) — **not collected**
 - Certify: data is **not sold**, **not used for unrelated purposes**, **not used for creditworthiness**. ✔ all three attestations.
 
-**Privacy policy URL:** host `PRIVACY.md` publicly and paste its URL — e.g. push this repo to GitHub and use
-`https://github.com/<you>/career-copilot/blob/main/PRIVACY.md` (or a GitHub Pages URL). **This field is required; it's the one step that can't be done from this machine.**
+**Privacy policy URL:**
+
+> https://github.com/nfteague/career-copilot/blob/main/PRIVACY.md
 
 ---
 
