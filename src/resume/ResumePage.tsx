@@ -140,6 +140,14 @@ export default function ResumePage() {
   ].filter((x) => x.trim());
   const noName = !resume.header.name.trim();
 
+  // Each block is its own contentEditable island — NOT the article. With one
+  // big editable surface, deleting past a section's last line makes the
+  // browser merge DOM-adjacent blocks, and since templates reorder sections
+  // visually via flex `order`, the DOM neighbor can be a different section's
+  // heading (deleting a project bullet ate the "Education" title). Browsers
+  // never merge across separate editing hosts, so damage stays local.
+  const editable = { contentEditable: true, suppressContentEditableWarning: true } as const;
+
   return (
     <>
       <div className="toolbar">
@@ -187,24 +195,22 @@ export default function ResumePage() {
                 style={
                   style.accent ? ({ '--accent': style.accent } as React.CSSProperties) : undefined
                 }
-                contentEditable
-                suppressContentEditableWarning
                 onInput={measurePages}
               >
-        <header style={{ order: 0 }}>
+        <header {...editable} style={{ order: 0 }}>
           <h1>{noName ? 'Your Name' : resume.header.name}</h1>
           {resume.header.headline.trim() && <p className="headline">{resume.header.headline}</p>}
           {contact.length > 0 && <p className="contact">{contact.join(' · ')}</p>}
         </header>
 
         {resume.summary.trim() && (
-          <p className="summary" style={{ order: orderOf('summary') }}>
+          <p {...editable} className="summary" style={{ order: orderOf('summary') }}>
             {resume.summary}
           </p>
         )}
 
         {resume.experience.length > 0 && (
-          <section style={{ order: orderOf('experience') }}>
+          <section {...editable} style={{ order: orderOf('experience') }}>
             <h2>Experience</h2>
             {resume.experience.map((e, i) => (
               <div className="entry" key={i}>
@@ -227,7 +233,7 @@ export default function ResumePage() {
         )}
 
         {resume.projects.length > 0 && (
-          <section style={{ order: orderOf('projects') }}>
+          <section {...editable} style={{ order: orderOf('projects') }}>
             <h2>Projects</h2>
             {resume.projects.map((p, i) => (
               <div className="entry" key={i}>
@@ -248,7 +254,7 @@ export default function ResumePage() {
         )}
 
         {resume.education.length > 0 && (
-          <section style={{ order: orderOf('education') }}>
+          <section {...editable} style={{ order: orderOf('education') }}>
             <h2>Education</h2>
             {resume.education.map((ed, i) => (
               <div className="entry" key={i}>
@@ -263,14 +269,14 @@ export default function ResumePage() {
         )}
 
         {resume.certifications.length > 0 && (
-          <section style={{ order: orderOf('certifications') }}>
+          <section {...editable} style={{ order: orderOf('certifications') }}>
             <h2>Certifications</h2>
             <p className="inline-list">{resume.certifications.join(' · ')}</p>
           </section>
         )}
 
         {resume.skills.length > 0 && (
-          <section style={{ order: orderOf('skills') }}>
+          <section {...editable} style={{ order: orderOf('skills') }}>
             <h2>Skills</h2>
             <p className="inline-list">{resume.skills.join(', ')}</p>
           </section>

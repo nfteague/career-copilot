@@ -141,9 +141,11 @@ body {
   padding-bottom: 0;
 }
 
-.page:focus {
+/* Each header/summary/section is its own editing island (see ResumePage). */
+.page [contenteditable='true']:focus {
   outline: 2px solid #94a3b8;
-  outline-offset: 2px;
+  outline-offset: 3px;
+  border-radius: 2px;
 }
 
 h1 {
@@ -276,7 +278,7 @@ li {
     box-shadow: none;
   }
 
-  .page:focus {
+  .page [contenteditable='true']:focus {
     outline: none;
   }
 }
