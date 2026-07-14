@@ -295,9 +295,10 @@ export default function Generator({
         </div>
 
         {kind === 'cover_letter' ? (
-          <input
+          <textarea
             value={instruction}
             onChange={(e) => setInstruction(e.target.value)}
+            rows={3}
             aria-label="Optional steering for the cover letter"
             placeholder="Optional: emphasize my startup experience…"
             className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
