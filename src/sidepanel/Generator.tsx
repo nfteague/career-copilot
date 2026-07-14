@@ -276,6 +276,7 @@ export default function Generator({
           job={job}
           detecting={detecting}
           note={detectNote}
+          disabled={resumeBusy}
           onChange={setJob}
           onGetJob={getJob}
         />
@@ -534,12 +535,16 @@ function JobEditor({
   job,
   detecting,
   note,
+  disabled = false,
   onChange,
   onGetJob,
 }: {
   job: JobContext;
   detecting: boolean;
   note: string;
+  // Locked while an in-flight generation captured this job — edits made now
+  // wouldn't apply to it, and the UI shouldn't pretend otherwise.
+  disabled?: boolean;
   onChange: (j: JobContext) => void;
   onGetJob: () => void;
 }) {
@@ -582,7 +587,10 @@ function JobEditor({
   }
 
   return (
-    <div className="rounded-md border border-slate-200 bg-white p-3">
+    <fieldset
+      disabled={disabled}
+      className="rounded-md border border-slate-200 bg-white p-3 disabled:opacity-60"
+    >
       <div className="mb-2 flex items-center justify-between">
         <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">
           Target role
@@ -639,6 +647,6 @@ function JobEditor({
           {note}
         </p>
       )}
-    </div>
+    </fieldset>
   );
 }
