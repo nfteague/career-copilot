@@ -66,6 +66,7 @@ export function toProfile(extracted: ExtractedProfile, base?: CareerProfile): Ca
     education: (e.education ?? []).map((x: any) => ({ id: id(), ...x })),
     projects: (e.projects ?? []).map((x: any) => ({ id: id(), ...x })),
     skills: e.skills ?? [],
+    languages: e.languages ?? [],
     certifications: (e.certifications ?? []).map((x: any) => ({ id: id(), ...x })),
     updatedAt: new Date().toISOString(),
   };

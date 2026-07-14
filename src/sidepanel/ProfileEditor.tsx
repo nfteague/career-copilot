@@ -25,7 +25,7 @@ export default function ProfileEditor({
   onUpdate: (patch: Partial<CareerProfile>) => void;
   onClear: () => void;
 }) {
-  const { basics, experience, projects, education, skills, certifications } = profile;
+  const { basics, experience, projects, education, skills, languages, certifications } = profile;
 
   const setExp = (xs: ExperienceEntry[]) => onUpdate({ experience: xs });
   const patchExp = (i: number, p: Partial<ExperienceEntry>) =>
@@ -127,6 +127,16 @@ export default function ProfileEditor({
       <section className="space-y-2">
         <h3 className="text-sm font-semibold">Skills</h3>
         <SkillChips skills={skills} onChange={(xs) => onUpdate({ skills: xs })} />
+      </section>
+
+      {/* Languages */}
+      <section className="space-y-2">
+        <h3 className="text-sm font-semibold">Languages</h3>
+        <SkillChips
+          skills={languages}
+          placeholder="Add a language with level, e.g. German (C1)"
+          onChange={(xs) => onUpdate({ languages: xs })}
+        />
       </section>
 
       {/* Certifications */}
@@ -285,7 +295,15 @@ function StringList({
   );
 }
 
-function SkillChips({ skills, onChange }: { skills: string[]; onChange: (xs: string[]) => void }) {
+function SkillChips({
+  skills,
+  onChange,
+  placeholder = 'Add a skill, press Enter',
+}: {
+  skills: string[];
+  onChange: (xs: string[]) => void;
+  placeholder?: string;
+}) {
   const [input, setInput] = useState('');
   const add = () => {
     const v = input.trim();
@@ -323,8 +341,8 @@ function SkillChips({ skills, onChange }: { skills: string[]; onChange: (xs: str
               add();
             }
           }}
-          aria-label="Add a skill"
-          placeholder="Add a skill, press Enter"
+          aria-label={placeholder}
+          placeholder={placeholder}
           className="flex-1 rounded-md border border-slate-300 px-2 py-1.5 text-sm"
         />
         <button onClick={add} className="rounded-md border border-slate-300 px-3 text-sm">

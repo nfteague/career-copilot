@@ -38,6 +38,7 @@ const RESUME_SECTIONS: readonly ResumeSectionKey[] = [
   'education',
   'certifications',
   'skills',
+  'languages',
 ];
 
 const oneOf = <T extends string>(v: unknown, options: readonly T[]): T | null =>
@@ -126,6 +127,7 @@ export function parseProfileJson(text: string): CareerProfile | null {
       }),
     ),
     skills: strArr(p.skills),
+    languages: strArr(p.languages),
     certifications: objArr(p.certifications).map((x) => withId({ ...x, name: str(x.name) })),
     supportingDocs: objArr(p.supportingDocs)
       .filter((d) => typeof d.content === 'string')

@@ -14,6 +14,7 @@ function populated(): CareerProfile {
     skills: ['roadmaps'],
   });
   p.skills.push('analysis');
+  p.languages.push('German (C1)');
   p.supportingDocs.push({
     id: 'd1',
     label: 'Old cover letter',
@@ -76,9 +77,14 @@ describe('parseProfileJson', () => {
 
   it('keeps only string skills and defaults missing entry sub-arrays', () => {
     const parsed = parseProfileJson(
-      JSON.stringify({ skills: ['ok', 42, null, 'also ok'], experience: [{ company: 'Acme' }] }),
+      JSON.stringify({
+        skills: ['ok', 42, null, 'also ok'],
+        languages: ['German (C1)', 7],
+        experience: [{ company: 'Acme' }],
+      }),
     );
     expect(parsed?.skills).toEqual(['ok', 'also ok']);
+    expect(parsed?.languages).toEqual(['German (C1)']);
     expect(parsed?.experience[0].highlights).toEqual([]);
     expect(parsed?.experience[0].skills).toEqual([]);
   });

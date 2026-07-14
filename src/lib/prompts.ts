@@ -189,6 +189,7 @@ function serializeProfile(p: CareerProfile, opts: { voiceSections?: boolean } = 
   }
 
   if (p.skills.length) lines.push(`\n## Skills\n${p.skills.join(', ')}`);
+  if ((p.languages ?? []).length) lines.push(`\n## Languages\n${p.languages.join(', ')}`);
   if (p.certifications.length) {
     lines.push('\n## Certifications');
     for (const c of p.certifications) lines.push(`- ${c.name}${c.issuer ? ` (${c.issuer})` : ''}`);
@@ -287,7 +288,7 @@ export function buildResumeTailoringPrompts(
   const system = `You tailor resumes. You are given a candidate's COMPLETE career history and a specific target role. Your core job is selection and emphasis, never invention: from everything the candidate has done, choose and order what genuinely maps to THIS role.
 
 Hard rules:
-- Every employer, job title, date, institution, degree, and certification must appear VERBATIM as it does in the profile. Never invent, rename, or adjust any of them.
+- Every employer, job title, date, institution, degree, certification, and language proficiency must appear VERBATIM as it does in the profile. Never invent, rename, or adjust any of them.
 - Bullets are selected and rephrased from the candidate's real highlights and materials. Preserve quantified results exactly (numbers, percentages, dollar amounts, scale). Never add facts the profile doesn't contain.
 - description (experience and projects): one factual line of company or role/project scope drawn from the profile's own summaries. REQUIRED for any role with zero bullets — a bare title-and-dates line mid-timeline reads as hiding something; the one-line scope statement keeps it credible. (Exception: roles more than ~10 years old may stand bare.) For roles with bullets, include it only when it adds signal for THIS job; otherwise an empty string.
 - Mirror the job description's exact terminology for skills the candidate genuinely has (this is what ATS keyword screens match on); omit skills they don't have.

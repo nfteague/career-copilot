@@ -253,6 +253,7 @@ describe('buildResumeTailoringPrompts', () => {
       education: [],
       certifications: [],
       skills: [],
+      languages: [],
     };
     const { system, user } = buildResumeTailoringPrompts(emptyProfile(), job, {
       previous,

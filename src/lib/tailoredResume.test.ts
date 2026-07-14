@@ -14,6 +14,7 @@ function resume(): TailoredResume {
     education: [{ institution: 'MIT', degree: '', dates: '' }],
     certifications: ['PMP'],
     skills: ['sql'],
+    languages: ['German (C1)'],
   };
 }
 

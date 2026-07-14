@@ -16,6 +16,7 @@ const SECTION_LABELS: Record<ResumeSectionKey, string> = {
   education: 'Education',
   certifications: 'Certifications',
   skills: 'Skills',
+  languages: 'Languages',
 };
 
 // Side-panel companion to the printable resume tab: structural toggles and
@@ -96,7 +97,7 @@ export default function ResumePanel({
 
   function tailoredPresent(key: ResumeSectionKey): boolean {
     if (key === 'summary') return resume.summary.trim().length > 0;
-    return resume[key].length > 0;
+    return (resume[key] ?? []).length > 0;
   }
 
   // A section row also shows when it has addable profile entries, so the

@@ -281,6 +281,13 @@ export default function ResumePage() {
             <p className="inline-list">{resume.skills.join(', ')}</p>
           </section>
         )}
+
+        {(resume.languages ?? []).length > 0 && (
+          <section {...editable} style={{ order: orderOf('languages') }}>
+            <h2>Languages</h2>
+            <p className="inline-list">{resume.languages.join(' · ')}</p>
+          </section>
+        )}
               </article>
             </td>
           </tr>

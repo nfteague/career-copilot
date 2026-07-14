@@ -11,6 +11,7 @@ export const DEFAULT_SECTION_ORDER: ResumeSectionKey[] = [
   'education',
   'certifications',
   'skills',
+  'languages',
 ];
 
 export const TEMPLATES: Record<Exclude<TemplateId, 'match'>, ResumeStyle> = {

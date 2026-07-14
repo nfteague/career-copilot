@@ -18,6 +18,7 @@ function populated(): CareerProfile {
     skills: ['roadmaps'],
   });
   p.skills.push('analysis');
+  p.languages.push('German (C1)');
   p.supportingDocs.push({
     id: 'd1',
     label: 'Old cover letter',

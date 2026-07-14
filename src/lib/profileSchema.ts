@@ -94,6 +94,7 @@ export const PROFILE_EXTRACTION_SCHEMA = {
       },
     },
     skills: { type: 'array', items: { type: 'string' } },
+    languages: { type: 'array', items: { type: 'string' } },
     certifications: {
       type: 'array',
       items: {
@@ -114,6 +115,7 @@ export const PROFILE_EXTRACTION_SCHEMA = {
     'education',
     'projects',
     'skills',
+    'languages',
     'certifications',
   ],
 } as const;
@@ -182,6 +184,7 @@ export const TAILORED_RESUME_SCHEMA = {
     },
     certifications: { type: 'array', items: { type: 'string' } },
     skills: { type: 'array', items: { type: 'string' } },
+    languages: { type: 'array', items: { type: 'string' } },
   },
   required: [
     'header',
@@ -191,6 +194,7 @@ export const TAILORED_RESUME_SCHEMA = {
     'education',
     'certifications',
     'skills',
+    'languages',
   ],
 } as const;
 
@@ -210,7 +214,15 @@ export const RESUME_STYLE_SCHEMA = {
       type: 'array',
       items: {
         type: 'string',
-        enum: ['summary', 'experience', 'projects', 'education', 'certifications', 'skills'],
+        enum: [
+          'summary',
+          'experience',
+          'projects',
+          'education',
+          'certifications',
+          'skills',
+          'languages',
+        ],
       },
     },
   },

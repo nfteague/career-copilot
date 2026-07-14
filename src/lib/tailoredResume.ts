@@ -44,5 +44,6 @@ export function applyHidden(resume: TailoredResume, hidden?: HiddenResumeParts):
     education: sections.has('education') ? [] : resume.education,
     certifications: sections.has('certifications') ? [] : resume.certifications,
     skills: sections.has('skills') ? [] : resume.skills,
+    languages: sections.has('languages') ? [] : (resume.languages ?? []),
   };
 }

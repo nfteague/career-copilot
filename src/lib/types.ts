@@ -122,6 +122,8 @@ export interface CareerProfile {
   education: EducationEntry[];
   projects: ProjectEntry[];
   skills: string[];
+  // Spoken/written languages with proficiency, e.g. "German (C1)".
+  languages: string[];
   certifications: Certification[];
   supportingDocs: SupportingDoc[];
   notes: Note[];
@@ -149,7 +151,8 @@ export type ResumeSectionKey =
   | 'projects'
   | 'education'
   | 'certifications'
-  | 'skills';
+  | 'skills'
+  | 'languages';
 
 export interface ResumeStyle {
   font: 'sans' | 'serif' | 'mixed'; // mixed = serif headings, sans body
@@ -187,6 +190,8 @@ export interface TailoredResume {
   education: { institution: string; degree: string; dates: string }[];
   certifications: string[];
   skills: string[];
+  // "German (C1)"-style entries; proficiency must come from the profile.
+  languages: string[];
 }
 
 // What the content script extracts from the page the user is on.
@@ -242,6 +247,7 @@ export function isProfileEmpty(p: CareerProfile): boolean {
     p.projects.length === 0 &&
     p.skills.length === 0 &&
     p.certifications.length === 0 &&
+    (p.languages ?? []).length === 0 &&
     p.supportingDocs.length === 0 &&
     p.notes.length === 0 &&
     p.qa.length === 0 &&
@@ -264,6 +270,7 @@ export function emptyProfile(): CareerProfile {
     education: [],
     projects: [],
     skills: [],
+    languages: [],
     certifications: [],
     supportingDocs: [],
     notes: [],
