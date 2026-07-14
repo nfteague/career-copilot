@@ -19,6 +19,7 @@ import { getProvider } from '../lib/providers';
 import { friendlyError } from '../lib/errors';
 import { MAX_DOC_CHARS } from '../lib/prompts';
 import { DOCX_MIME, docxToText, isDocxFile, isLegacyDocFile } from '../lib/docx';
+import { parseProfileJson } from '../lib/importProfile';
 import { fileToBase64 } from './tabContext';
 import ProfileEditor from './ProfileEditor';
 
@@ -63,6 +64,7 @@ export default function ProfileSetup({
 }) {
   const [tab, setTab] = useState<Tab>(profile.experience.length ? 'review' : 'docs');
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
   const [canUndo, setCanUndo] = useState(false);
   // One combined flag so the two provider-calling surfaces (resume ingest,
   // doc transcription) can never run concurrently.
@@ -79,6 +81,7 @@ export default function ProfileSetup({
     const startTab = tab;
     onBusyChange(true);
     setError('');
+    setNotice('');
     try {
       const next = await fn();
       // Snapshot the pre-ingest profile first — model-driven merges can drop
@@ -114,13 +117,18 @@ export default function ProfileSetup({
 
   async function undo() {
     const restored = await restoreProfileBackup();
-    if (restored) onChange(restored);
+    if (restored) {
+      // A pending brain-dump draft belongs to the profile being swapped out.
+      onDumpDraftChange(null);
+      onChange(restored);
+    }
   }
 
   async function onResumeFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     e.target.value = ''; // allow re-selecting the same file
     if (!file) return;
+    setNotice(''); // a stale success banner shouldn't outlive new validation errors
     if (file.size > MAX_UPLOAD_BYTES) {
       setError('That file is too large.');
       return;
@@ -183,6 +191,41 @@ export default function ProfileSetup({
     URL.revokeObjectURL(url);
   }
 
+  const IMPORT_REJECT =
+    "That file doesn't look like a Career Copilot profile export. If it's a transcript or other document, add it under the Documents tab instead.";
+
+  async function onImportFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // allow re-selecting the same file
+    if (!file) return;
+    setNotice('');
+    // A legit export is well under 1 MB; a large file is a wrong pick.
+    if (file.size > 5 * 1024 * 1024) {
+      setError(IMPORT_REJECT);
+      return;
+    }
+    let imported: CareerProfile | null = null;
+    try {
+      imported = parseProfileJson(await file.text());
+    } catch {
+      /* unreadable file → same rejection below */
+    }
+    if (!imported) {
+      setError(IMPORT_REJECT);
+      return;
+    }
+    setError('');
+    // Import REPLACES the profile wholesale; the pre-import backup is the undo.
+    await backupProfile();
+    await saveProfile(imported);
+    setCanUndo(true);
+    // A pending brain-dump draft belongs to the replaced profile — drop it so
+    // it can't mask (or later overwrite) the imported narrative.
+    onDumpDraftChange(null);
+    onChange(imported);
+    setNotice('Profile imported — the previous profile is available under "Restore previous version."');
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex gap-1 rounded-lg bg-slate-100 p-1 text-xs">
@@ -205,6 +248,11 @@ export default function ProfileSetup({
           {error}
         </p>
       )}
+      {notice && (
+        <p role="status" className="rounded-md bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
+          {notice}
+        </p>
+      )}
       {busy && (
         <p role="status" className="text-xs text-slate-500">
           Reading and structuring… this takes a few seconds.
@@ -221,6 +269,18 @@ export default function ProfileSetup({
             busy={anyBusy}
             onBusyChange={onDocBusyChange}
           />
+          {profile.experience.length === 0 && profile.supportingDocs.length === 0 && (
+            <p className="text-xs text-slate-500">
+              Moving from another machine?{' '}
+              <button
+                onClick={() => setTab('review')}
+                className="underline hover:text-slate-800"
+              >
+                Import your profile export
+              </button>{' '}
+              under Review.
+            </p>
+          )}
         </div>
       )}
 
@@ -240,13 +300,27 @@ export default function ProfileSetup({
 
       {tab === 'review' && (
         <div className="space-y-3">
-          <div className="flex items-center gap-4 text-xs">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
             <button
               onClick={exportProfile}
               className="font-medium text-slate-500 underline hover:text-slate-800"
             >
               Export profile (JSON)
             </button>
+            <label
+              className={`rounded font-medium underline focus-within:ring-2 focus-within:ring-slate-400 ${
+                anyBusy ? 'text-slate-300' : 'cursor-pointer text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              Import profile (JSON)
+              <input
+                type="file"
+                accept=".json,application/json"
+                onChange={onImportFile}
+                disabled={anyBusy}
+                className="sr-only"
+              />
+            </label>
             {canUndo && (
               <button
                 onClick={undo}
@@ -553,10 +627,8 @@ function DocumentsTab({
     <section className="space-y-4">
       <h3 className="text-sm font-semibold">Supporting documents</h3>
       <p className="text-sm text-slate-600">
-        Attach extra material with your own label — past cover letters, writing samples, case
-        studies, an interview transcript. Paste text, or upload a PDF, DOCX, or text file (TXT,
-        MD, JSON, CSV). Cover letters and writing samples shape the voice of your drafts;
-        everything else informs them as context.
+        Extra material that informs every draft — cover letters and writing samples also shape
+        its voice. Paste text or upload a file (PDF, DOCX, TXT, MD, JSON, CSV).
       </p>
 
       {DOC_GROUPS.map(({ cat, title, voice }) => {
