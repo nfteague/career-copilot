@@ -254,6 +254,16 @@ function serializeJob(j: JobContext): string {
   return lines.join('\n');
 }
 
+// System prompt for extractResumeStyle — describe how the uploaded resume
+// LOOKS (not what it says) as tokens for a single-column HTML template.
+export const RESUME_STYLE_EXTRACTION_SYSTEM = `You describe the visual design of a resume document so it can be reproduced as a single-column HTML template. Look only at how it LOOKS — typography, alignment, spacing, color, ordering — never at its content.
+
+Rules:
+- Choose the closest match for every field; when in doubt, pick the more conservative option.
+- accent: the dominant non-black heading or rule color as a 6-digit hex (e.g. "#2b6cb0"); an empty string when the resume is effectively black-and-white.
+- Map multi-column layouts to their closest single-column equivalent (sidebar sections become later entries in sectionOrder).
+- sectionOrder lists only sections that exist in the document, in visual reading order.`;
+
 // Prompts for tailorResume — a structured-output call (no streaming, no
 // needs-info protocol: a resume is selection over existing data).
 export function buildResumeTailoringPrompts(

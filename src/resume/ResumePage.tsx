@@ -1,20 +1,53 @@
 import { useEffect, useState } from 'react';
-import { TailoredResume } from '../lib/types';
+import { ResumeSectionKey, ResumeStyle, TailoredResume } from '../lib/types';
+import { getResumeTemplateChoice, saveResumeTemplateChoice } from '../lib/storage';
+import {
+  DEFAULT_TEMPLATE,
+  TEMPLATES,
+  TEMPLATE_LABELS,
+  TemplateId,
+  safeStyle,
+} from './templates';
 
-// Renders the tailored resume handed off by the side panel via
-// chrome.storage.session, as a print-first page: real text (ATS-parseable),
-// letter-sized, everything editable in place before printing.
+// What the side panel hands off via chrome.storage.session.
+interface ResumeHandoff {
+  resume: TailoredResume;
+  // Design tokens extracted from the user's own uploaded resume, if any.
+  matchStyle: ResumeStyle | null;
+}
+
+// Renders the tailored resume as a print-first page: real text
+// (ATS-parseable), letter-sized, everything editable in place.
+//
+// Templates apply ONLY as CSS classes and flex-order values on the page —
+// attribute-level updates React can make without touching children — so
+// switching templates never destroys the user's in-place edits.
 export default function ResumePage() {
-  const [resume, setResume] = useState<TailoredResume | null>(null);
+  const [handoff, setHandoff] = useState<ResumeHandoff | null>(null);
   const [missing, setMissing] = useState(false);
+  const [template, setTemplate] = useState<TemplateId>(DEFAULT_TEMPLATE);
 
   useEffect(() => {
-    chrome.storage.session.get('pendingResume').then((stored) => {
-      const r = stored.pendingResume as TailoredResume | undefined;
-      if (r) setResume(r);
-      else setMissing(true);
-    });
+    (async () => {
+      const stored = await chrome.storage.session.get('pendingResume');
+      const raw = stored.pendingResume as ResumeHandoff | TailoredResume | undefined;
+      if (!raw) {
+        setMissing(true);
+        return;
+      }
+      const h: ResumeHandoff =
+        'resume' in raw ? (raw as ResumeHandoff) : { resume: raw as TailoredResume, matchStyle: null };
+      setHandoff(h);
+      const choice = (await getResumeTemplateChoice()) as TemplateId | '';
+      if (choice && (choice !== 'match' || h.matchStyle)) setTemplate(choice);
+      else if (h.matchStyle) setTemplate('match');
+    })();
   }, []);
+
+  function chooseTemplate(id: TemplateId) {
+    setTemplate(id);
+    void saveResumeTemplateChoice(id);
+  }
 
   if (missing) {
     return (
@@ -27,7 +60,27 @@ export default function ResumePage() {
       </div>
     );
   }
-  if (!resume) return null;
+  if (!handoff) return null;
+
+  const { resume, matchStyle } = handoff;
+  const style =
+    template === 'match' && matchStyle
+      ? safeStyle(matchStyle)
+      : TEMPLATES[template as Exclude<TemplateId, 'match'>] ?? TEMPLATES.modern;
+  // Sections keep a fixed JSX order; templates reorder them visually via
+  // flex order (see note above).
+  const orderOf = (key: ResumeSectionKey) => {
+    const i = style.sectionOrder.indexOf(key);
+    return i === -1 ? 99 : i + 1;
+  };
+  const pageClass = [
+    'page',
+    `font-${style.font}`,
+    `align-${style.headerAlign}`,
+    `density-${style.density}`,
+    `case-${style.sectionCase}`,
+    `divider-${style.divider}`,
+  ].join(' ');
 
   const contact = [
     resume.header.location,
@@ -44,20 +97,43 @@ export default function ResumePage() {
           Click into the resume to edit anything, then save it as a PDF.
           {noName && ' No name set — click the heading to type it, or add it in Profile → Review.'}
         </p>
-        <button onClick={() => window.print()}>Print / Save as PDF</button>
+        <div className="controls">
+          <select
+            value={template}
+            onChange={(e) => chooseTemplate(e.target.value as TemplateId)}
+            aria-label="Resume template"
+          >
+            {matchStyle && <option value="match">My resume’s look</option>}
+            {(Object.keys(TEMPLATES) as Exclude<TemplateId, 'match'>[]).map((id) => (
+              <option key={id} value={id}>
+                {TEMPLATE_LABELS[id]}
+              </option>
+            ))}
+          </select>
+          <button onClick={() => window.print()}>Print / Save as PDF</button>
+        </div>
       </div>
 
-      <article className="page" contentEditable suppressContentEditableWarning>
-        <header>
+      <article
+        className={pageClass}
+        style={style.accent ? ({ '--accent': style.accent } as React.CSSProperties) : undefined}
+        contentEditable
+        suppressContentEditableWarning
+      >
+        <header style={{ order: 0 }}>
           <h1>{noName ? 'Your Name' : resume.header.name}</h1>
           {resume.header.headline.trim() && <p className="headline">{resume.header.headline}</p>}
           {contact.length > 0 && <p className="contact">{contact.join(' · ')}</p>}
         </header>
 
-        {resume.summary.trim() && <p className="summary">{resume.summary}</p>}
+        {resume.summary.trim() && (
+          <p className="summary" style={{ order: orderOf('summary') }}>
+            {resume.summary}
+          </p>
+        )}
 
         {resume.experience.length > 0 && (
-          <section>
+          <section style={{ order: orderOf('experience') }}>
             <h2>Experience</h2>
             {resume.experience.map((e, i) => (
               <div className="entry" key={i}>
@@ -79,7 +155,7 @@ export default function ResumePage() {
         )}
 
         {resume.projects.length > 0 && (
-          <section>
+          <section style={{ order: orderOf('projects') }}>
             <h2>Projects</h2>
             {resume.projects.map((p, i) => (
               <div className="entry" key={i}>
@@ -100,7 +176,7 @@ export default function ResumePage() {
         )}
 
         {resume.education.length > 0 && (
-          <section>
+          <section style={{ order: orderOf('education') }}>
             <h2>Education</h2>
             {resume.education.map((ed, i) => (
               <div className="entry" key={i}>
@@ -115,14 +191,14 @@ export default function ResumePage() {
         )}
 
         {resume.certifications.length > 0 && (
-          <section>
+          <section style={{ order: orderOf('certifications') }}>
             <h2>Certifications</h2>
             <p className="inline-list">{resume.certifications.join(' · ')}</p>
           </section>
         )}
 
         {resume.skills.length > 0 && (
-          <section>
+          <section style={{ order: orderOf('skills') }}>
             <h2>Skills</h2>
             <p className="inline-list">{resume.skills.join(', ')}</p>
           </section>

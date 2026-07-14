@@ -127,12 +127,38 @@ export interface CareerProfile {
   notes: Note[];
   qa: QAPair[];
   resume?: ResumeMeta;
+  // Design tokens extracted from the last uploaded PDF resume ("match my
+  // resume's look" on the tailored-resume page). Presentation only — absent
+  // until a PDF resume is uploaded, and never counts as profile content.
+  resumeStyle?: ResumeStyle;
   // Freeform brain-dump: things resumes omit (motivations, context behind
   // moves, soft wins, what the person actually cares about). Fed to the model
   // verbatim alongside the structured data.
   narrative: string;
   preferences: Preferences;
   updatedAt: string; // ISO timestamp
+}
+
+// The visual design of a resume as structured tokens our renderer applies —
+// deliberately NOT free-form model HTML/CSS (print correctness, ATS safety,
+// no sanitization surface). Extracted once from the user's uploaded PDF
+// resume; multi-column layouts map to their closest single-column equivalent.
+export type ResumeSectionKey =
+  | 'summary'
+  | 'experience'
+  | 'projects'
+  | 'education'
+  | 'certifications'
+  | 'skills';
+
+export interface ResumeStyle {
+  font: 'sans' | 'serif' | 'mixed'; // mixed = serif headings, sans body
+  accent: string; // 6-digit hex for headings/rules; '' = black-and-white
+  headerAlign: 'left' | 'center';
+  density: 'comfortable' | 'compact';
+  sectionCase: 'uppercase' | 'title';
+  divider: 'line' | 'none'; // rule under section headings
+  sectionOrder: ResumeSectionKey[];
 }
 
 // A job-tailored resume produced by the model — selection and rephrasing over

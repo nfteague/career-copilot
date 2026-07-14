@@ -107,7 +107,7 @@ export default function ProfileSetup({
         qa: latest.qa,
         preferences: latest.preferences,
         ...(owns.narrative ? {} : { narrative: latest.narrative }),
-        ...(owns.resume ? {} : { resume: latest.resume }),
+        ...(owns.resume ? {} : { resume: latest.resume, resumeStyle: latest.resumeStyle }),
       }));
       // Record the merged result as the new Current version.
       const versioned = await recordVersion(opts.reason);
@@ -162,10 +162,17 @@ export default function ProfileSetup({
     if (isPdf) {
       const base64 = await fileToBase64(file);
       await ingest(
-        async () => ({
-          ...(await (await getProvider(settings)).ingestPdf(base64, profile)),
-          ...marker,
-        }),
+        async () => {
+          const provider = await getProvider(settings);
+          // Style extraction rides along in parallel — it captures the visual
+          // design as renderer tokens for "match my resume" on the tailored
+          // resume page. Its failure must never fail the content ingest.
+          const [extracted, style] = await Promise.all([
+            provider.ingestPdf(base64, profile),
+            provider.extractResumeStyle(base64).catch(() => undefined),
+          ]);
+          return { ...extracted, ...marker, ...(style ? { resumeStyle: style } : {}) };
+        },
         { resume: true, reason: 'resume-upload' },
       );
     } else {

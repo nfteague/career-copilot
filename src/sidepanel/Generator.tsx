@@ -180,7 +180,11 @@ export default function Generator({
     try {
       const provider = await getProvider(settings);
       const tailored = await provider.tailorResume(withPrefs(profile), job);
-      await chrome.storage.session.set({ pendingResume: tailored });
+      await chrome.storage.session.set({
+        // matchStyle carries the design tokens extracted from the user's own
+        // uploaded resume, when they exist — the page offers them as a template.
+        pendingResume: { resume: tailored, matchStyle: profile.resumeStyle ?? null },
+      });
       await chrome.tabs.create({ url: chrome.runtime.getURL('src/resume/index.html') });
     } catch (e) {
       setResumeError(friendlyError(e));

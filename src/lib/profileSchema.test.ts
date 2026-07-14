@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { PROFILE_EXTRACTION_SCHEMA, TAILORED_RESUME_SCHEMA } from './profileSchema';
+import {
+  PROFILE_EXTRACTION_SCHEMA,
+  RESUME_STYLE_SCHEMA,
+  TAILORED_RESUME_SCHEMA,
+} from './profileSchema';
 
 // OpenAI strict mode requires every object to set additionalProperties: false
 // and list ALL of its properties as required. Walk each schema and assert it,
@@ -25,5 +29,9 @@ describe('structured-output schemas are OpenAI-strict-compatible', () => {
 
   it('TAILORED_RESUME_SCHEMA', () => {
     assertStrict(TAILORED_RESUME_SCHEMA as unknown as Record<string, unknown>, 'resume');
+  });
+
+  it('RESUME_STYLE_SCHEMA', () => {
+    assertStrict(RESUME_STYLE_SCHEMA as unknown as Record<string, unknown>, 'style');
   });
 });

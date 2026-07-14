@@ -1,4 +1,11 @@
-import { CareerProfile, JobContext, GenerationKind, TailoredResume, emptyProfile } from '../types';
+import {
+  CareerProfile,
+  JobContext,
+  GenerationKind,
+  ResumeStyle,
+  TailoredResume,
+  emptyProfile,
+} from '../types';
 
 export const MAX_OUTPUT_TOKENS = 8000;
 // Transcribing a long PDF (e.g. an interview transcript) needs far more output
@@ -29,6 +36,9 @@ export interface LLMProvider {
   // Select and rephrase profile content into a job-tailored resume
   // (structured output, non-streaming).
   tailorResume(profile: CareerProfile, job: JobContext, signal?: AbortSignal): Promise<TailoredResume>;
+  // Describe the visual design of an uploaded PDF resume as renderer tokens
+  // (vision + structured output; content is ignored).
+  extractResumeStyle(base64: string, signal?: AbortSignal): Promise<ResumeStyle>;
 }
 
 export const PDF_TO_TEXT_PROMPT =

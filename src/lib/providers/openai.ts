@@ -1,8 +1,13 @@
 import OpenAI from 'openai';
-import { CareerProfile, JobContext, TailoredResume } from '../types';
-import { PROFILE_EXTRACTION_SCHEMA, TAILORED_RESUME_SCHEMA } from '../profileSchema';
+import { CareerProfile, JobContext, ResumeStyle, TailoredResume } from '../types';
+import {
+  PROFILE_EXTRACTION_SCHEMA,
+  RESUME_STYLE_SCHEMA,
+  TAILORED_RESUME_SCHEMA,
+} from '../profileSchema';
 import {
   PROFILE_EXTRACTION_SYSTEM,
+  RESUME_STYLE_EXTRACTION_SYSTEM,
   buildMergePreamble,
   buildGenerationSystem,
   buildGenerationUserPrompt,
@@ -119,6 +124,36 @@ export class OpenAIProvider implements LLMProvider {
     const text = res.choices[0]?.message?.content;
     if (!text) throw new Error('No structured output returned.');
     return JSON.parse(text) as TailoredResume;
+  }
+
+  async extractResumeStyle(base64: string, signal?: AbortSignal): Promise<ResumeStyle> {
+    const res = await this.client.chat.completions.create(
+      {
+        model: this.model,
+        max_completion_tokens: 1000,
+        response_format: {
+          type: 'json_schema',
+          json_schema: { name: 'resume_style', strict: true, schema: RESUME_STYLE_SCHEMA },
+        },
+        messages: [
+          { role: 'system', content: RESUME_STYLE_EXTRACTION_SYSTEM },
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: 'Describe the visual design of this resume.' },
+              {
+                type: 'file',
+                file: { filename: 'resume.pdf', file_data: `data:application/pdf;base64,${base64}` },
+              },
+            ] as any,
+          },
+        ],
+      },
+      { signal },
+    );
+    const text = res.choices[0]?.message?.content;
+    if (!text) throw new Error('No structured output returned.');
+    return JSON.parse(text) as ResumeStyle;
   }
 
   async generate(args: GenerateArgs): Promise<string> {

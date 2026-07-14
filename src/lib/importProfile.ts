@@ -3,6 +3,8 @@ import {
   DEFAULT_PREFERENCES,
   DocCategory,
   Preferences,
+  ResumeSectionKey,
+  ResumeStyle,
   emptyProfile,
 } from './types';
 
@@ -28,6 +30,41 @@ const withId = <T extends Obj>(x: T): T & { id: string } => ({
   ...x,
   id: typeof x.id === 'string' && x.id ? x.id : crypto.randomUUID(),
 });
+
+const RESUME_SECTIONS: readonly ResumeSectionKey[] = [
+  'summary',
+  'experience',
+  'projects',
+  'education',
+  'certifications',
+  'skills',
+];
+
+const oneOf = <T extends string>(v: unknown, options: readonly T[]): T | null =>
+  typeof v === 'string' && (options as readonly string[]).includes(v) ? (v as T) : null;
+
+// Validate an imported resumeStyle; anything malformed is dropped whole (the
+// renderer would rather fall back to a built-in template than half a style).
+function parseResumeStyle(v: unknown): ResumeStyle | undefined {
+  if (!isObj(v)) return undefined;
+  const font = oneOf(v.font, ['sans', 'serif', 'mixed'] as const);
+  const headerAlign = oneOf(v.headerAlign, ['left', 'center'] as const);
+  const density = oneOf(v.density, ['comfortable', 'compact'] as const);
+  const sectionCase = oneOf(v.sectionCase, ['uppercase', 'title'] as const);
+  const divider = oneOf(v.divider, ['line', 'none'] as const);
+  if (!font || !headerAlign || !density || !sectionCase || !divider) return undefined;
+  return {
+    font,
+    headerAlign,
+    density,
+    sectionCase,
+    divider,
+    accent: str(v.accent),
+    sectionOrder: strArr(v.sectionOrder).filter((s): s is ResumeSectionKey =>
+      (RESUME_SECTIONS as readonly string[]).includes(s),
+    ),
+  };
+}
 
 export function parseProfileJson(text: string): CareerProfile | null {
   let parsed: unknown;
@@ -124,6 +161,7 @@ export function parseProfileJson(text: string): CareerProfile | null {
         : {}),
     },
     resume,
+    resumeStyle: parseResumeStyle(p.resumeStyle),
     updatedAt: new Date().toISOString(),
   };
 }

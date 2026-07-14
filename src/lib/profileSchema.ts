@@ -192,3 +192,26 @@ export const TAILORED_RESUME_SCHEMA = {
     'skills',
   ],
 } as const;
+
+// Schema for extractResumeStyle — the visual design of an uploaded resume as
+// renderer tokens (see ResumeStyle in types.ts). Same strict conventions.
+export const RESUME_STYLE_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    font: { type: 'string', enum: ['sans', 'serif', 'mixed'] },
+    accent: { type: 'string' },
+    headerAlign: { type: 'string', enum: ['left', 'center'] },
+    density: { type: 'string', enum: ['comfortable', 'compact'] },
+    sectionCase: { type: 'string', enum: ['uppercase', 'title'] },
+    divider: { type: 'string', enum: ['line', 'none'] },
+    sectionOrder: {
+      type: 'array',
+      items: {
+        type: 'string',
+        enum: ['summary', 'experience', 'projects', 'education', 'certifications', 'skills'],
+      },
+    },
+  },
+  required: ['font', 'accent', 'headerAlign', 'density', 'sectionCase', 'divider', 'sectionOrder'],
+} as const;

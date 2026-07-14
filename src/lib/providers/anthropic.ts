@@ -1,8 +1,13 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { CareerProfile, JobContext, TailoredResume } from '../types';
-import { PROFILE_EXTRACTION_SCHEMA, TAILORED_RESUME_SCHEMA } from '../profileSchema';
+import { CareerProfile, JobContext, ResumeStyle, TailoredResume } from '../types';
+import {
+  PROFILE_EXTRACTION_SCHEMA,
+  RESUME_STYLE_SCHEMA,
+  TAILORED_RESUME_SCHEMA,
+} from '../profileSchema';
 import {
   PROFILE_EXTRACTION_SYSTEM,
+  RESUME_STYLE_EXTRACTION_SYSTEM,
   buildMergePreamble,
   buildGenerationSystem,
   buildGenerationUserPrompt,
@@ -104,6 +109,33 @@ export class AnthropicProvider implements LLMProvider {
     const block = res.content.find((b) => b.type === 'text');
     if (!block || block.type !== 'text') throw new Error('No structured output returned.');
     return JSON.parse(block.text) as TailoredResume;
+  }
+
+  async extractResumeStyle(base64: string, signal?: AbortSignal): Promise<ResumeStyle> {
+    const res = await this.client.messages.create(
+      {
+        model: this.model,
+        max_tokens: 1000,
+        system: RESUME_STYLE_EXTRACTION_SYSTEM,
+        output_config: { format: { type: 'json_schema', schema: RESUME_STYLE_SCHEMA } },
+        messages: [
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: 'Describe the visual design of this resume.' },
+              {
+                type: 'document',
+                source: { type: 'base64', media_type: 'application/pdf', data: base64 },
+              },
+            ],
+          },
+        ],
+      },
+      { signal },
+    );
+    const block = res.content.find((b) => b.type === 'text');
+    if (!block || block.type !== 'text') throw new Error('No structured output returned.');
+    return JSON.parse(block.text) as ResumeStyle;
   }
 
   async generate(args: GenerateArgs): Promise<string> {

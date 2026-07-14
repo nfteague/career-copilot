@@ -222,6 +222,22 @@ export async function hasApiKey(): Promise<boolean> {
   return activeCreds(await getSettings()).apiKey.trim().length > 0;
 }
 
+// The template last chosen on the tailored-resume page ('' = never chosen;
+// the page defaults to the user's own extracted style when one exists).
+const RESUME_TEMPLATE_KEY = 'resumeTemplate';
+
+export async function getResumeTemplateChoice(): Promise<string> {
+  return (
+    ((await chrome.storage.local.get(RESUME_TEMPLATE_KEY))[RESUME_TEMPLATE_KEY] as
+      | string
+      | undefined) ?? ''
+  );
+}
+
+export async function saveResumeTemplateChoice(id: string): Promise<void> {
+  await chrome.storage.local.set({ [RESUME_TEMPLATE_KEY]: id });
+}
+
 export async function getQuickCopies(): Promise<QuickCopy[]> {
   const stored = (await chrome.storage.local.get(QUICKCOPY_KEY))[QUICKCOPY_KEY] as
     | QuickCopy[]

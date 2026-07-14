@@ -23,6 +23,15 @@ function populated(): CareerProfile {
   });
   p.qa.push({ id: 'q1', question: 'Why here?', answer: 'Mission.', addedAt: '2026-01-01' });
   p.resume = { filename: 'ada.pdf', uploadedAt: '2026-01-01' };
+  p.resumeStyle = {
+    font: 'serif',
+    accent: '#1e3a5f',
+    headerAlign: 'center',
+    density: 'comfortable',
+    sectionCase: 'title',
+    divider: 'line',
+    sectionOrder: ['summary', 'experience', 'education', 'skills'],
+  };
   p.narrative = 'Context resumes leave out.';
   p.preferences.customInstructions = 'Never use em dashes.';
   return p;
@@ -134,6 +143,19 @@ describe('parseProfileJson', () => {
     );
     expect(parsed?.qa).toHaveLength(1);
     expect(parsed?.qa[0].question).toBe('Q?');
+  });
+
+  it('drops a malformed resumeStyle whole, keeps a valid one', () => {
+    expect(
+      parseProfileJson(JSON.stringify({ basics: {}, resumeStyle: { font: 'comic-sans' } }))
+        ?.resumeStyle,
+    ).toBeUndefined();
+    expect(
+      parseProfileJson(JSON.stringify({ basics: {}, resumeStyle: 'fancy' }))?.resumeStyle,
+    ).toBeUndefined();
+    const valid = populated().resumeStyle;
+    const parsed = parseProfileJson(JSON.stringify({ basics: {}, resumeStyle: valid }));
+    expect(parsed?.resumeStyle).toEqual(valid);
   });
 
   it('folds pre-0.2.0 notes into the narrative', () => {
