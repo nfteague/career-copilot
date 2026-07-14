@@ -1,0 +1,221 @@
+import { useEffect, useState } from 'react';
+import { CareerProfile, JobContext, ResumeSectionKey, Settings } from '../lib/types';
+import {
+  EMPTY_HIDDEN,
+  HiddenResumeParts,
+  PendingResume,
+  applyHidden,
+} from '../lib/tailoredResume';
+import { getProvider } from '../lib/providers';
+import { friendlyError } from '../lib/errors';
+
+const SECTION_LABELS: Record<ResumeSectionKey, string> = {
+  summary: 'Summary',
+  experience: 'Experience',
+  projects: 'Projects',
+  education: 'Education',
+  certifications: 'Certifications',
+  skills: 'Skills',
+};
+
+// Side-panel companion to the printable resume tab: structural toggles and
+// the AI-revision loop. Every change here is written to the shared session
+// handoff; the tab listens and rebuilds (replacing in-page text edits).
+export default function ResumePanel({
+  profile,
+  settings,
+}: {
+  profile: CareerProfile;
+  settings: Settings;
+}) {
+  const [pending, setPending] = useState<PendingResume | null>(null);
+  const [reviseText, setReviseText] = useState('');
+  const [revising, setRevising] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    chrome.storage.session
+      .get('pendingResume')
+      .then((r) => setPending((r.pendingResume as PendingResume | undefined) ?? null));
+    const listener = (
+      changes: Record<string, chrome.storage.StorageChange>,
+      area: string,
+    ) => {
+      if (area === 'session' && changes.pendingResume) {
+        setPending((changes.pendingResume.newValue as PendingResume | undefined) ?? null);
+      }
+    };
+    chrome.storage.onChanged.addListener(listener);
+    return () => chrome.storage.onChanged.removeListener(listener);
+  }, []);
+
+  if (!pending) {
+    return (
+      <p className="text-sm text-slate-600">
+        No resume yet — generate one from the Generate tab, then fine-tune it here.
+      </p>
+    );
+  }
+
+  const { resume } = pending;
+  const hidden = pending.hidden ?? EMPTY_HIDDEN;
+
+  async function write(next: PendingResume) {
+    setPending(next);
+    await chrome.storage.session.set({ pendingResume: next });
+  }
+
+  function withHidden(patch: Partial<HiddenResumeParts>) {
+    return write({ ...pending!, hidden: { ...hidden, ...patch } });
+  }
+
+  const toggle = (list: number[], i: number) =>
+    list.includes(i) ? list.filter((x) => x !== i) : [...list, i];
+
+  function sectionPresent(key: ResumeSectionKey): boolean {
+    if (key === 'summary') return resume.summary.trim().length > 0;
+    return resume[key].length > 0;
+  }
+
+  async function openTab() {
+    await chrome.tabs.create({ url: chrome.runtime.getURL('src/resume/index.html') });
+  }
+
+  async function revise() {
+    const instruction = reviseText.trim();
+    if (!instruction || revising) return;
+    setRevising(true);
+    setError('');
+    try {
+      const provider = await getProvider(settings);
+      const job: JobContext = {
+        url: '',
+        source: '',
+        company: pending!.company,
+        role: pending!.role,
+        jobDescription: pending!.jobDescription,
+        questions: [],
+      };
+      // Iterate on what the user actually sees — hidden parts stay out, and
+      // the revision becomes the new baseline (hidden resets).
+      const next = await provider.tailorResume(profile, job, {
+        revision: { previous: applyHidden(resume, hidden), instruction },
+      });
+      await write({ ...pending!, resume: next, hidden: EMPTY_HIDDEN });
+      setReviseText('');
+    } catch (e) {
+      setError(friendlyError(e));
+    } finally {
+      setRevising(false);
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h2 className="text-base font-semibold">
+          Tailored resume
+          {(pending.company || pending.role) && (
+            <span className="ml-2 text-xs font-normal text-slate-500">
+              {[pending.role, pending.company].filter(Boolean).join(' · ')}
+            </span>
+          )}
+        </h2>
+        <button
+          onClick={openTab}
+          className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium hover:bg-slate-100"
+        >
+          Open resume
+        </button>
+      </div>
+      <p className="text-xs text-slate-500">
+        Changes here rebuild the resume page — text you edited directly on the page is replaced.
+      </p>
+
+      <section className="space-y-1.5">
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Sections</h3>
+        {(Object.keys(SECTION_LABELS) as ResumeSectionKey[])
+          .filter(sectionPresent)
+          .map((key) => (
+            <label key={key} className="flex items-center gap-2 text-sm text-slate-700">
+              <input
+                type="checkbox"
+                checked={!hidden.sections.includes(key)}
+                onChange={() =>
+                  withHidden({
+                    sections: hidden.sections.includes(key)
+                      ? hidden.sections.filter((s) => s !== key)
+                      : [...hidden.sections, key],
+                  })
+                }
+              />
+              {SECTION_LABELS[key]}
+            </label>
+          ))}
+      </section>
+
+      {resume.experience.length > 0 && !hidden.sections.includes('experience') && (
+        <section className="space-y-1.5">
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Roles</h3>
+          {resume.experience.map((e, i) => (
+            <label key={i} className="flex items-center gap-2 text-sm text-slate-700">
+              <input
+                type="checkbox"
+                checked={!hidden.experience.includes(i)}
+                onChange={() => withHidden({ experience: toggle(hidden.experience, i) })}
+              />
+              <span className="min-w-0 truncate">
+                {e.title} — {e.company}
+              </span>
+            </label>
+          ))}
+        </section>
+      )}
+
+      {resume.projects.length > 0 && !hidden.sections.includes('projects') && (
+        <section className="space-y-1.5">
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Projects
+          </h3>
+          {resume.projects.map((p, i) => (
+            <label key={i} className="flex items-center gap-2 text-sm text-slate-700">
+              <input
+                type="checkbox"
+                checked={!hidden.projects.includes(i)}
+                onChange={() => withHidden({ projects: toggle(hidden.projects, i) })}
+              />
+              <span className="min-w-0 truncate">{p.name}</span>
+            </label>
+          ))}
+        </section>
+      )}
+
+      <section className="space-y-2">
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+          Revise with AI
+        </h3>
+        <textarea
+          value={reviseText}
+          onChange={(e) => setReviseText(e.target.value)}
+          disabled={revising}
+          rows={3}
+          aria-label="Revision request"
+          placeholder='e.g. "More technical", "lead with the data work", "tighten to fewer bullets"'
+          className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+        />
+        <button
+          onClick={revise}
+          disabled={revising || !reviseText.trim()}
+          className="w-full rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-40"
+        >
+          {revising ? 'Revising…' : 'Revise resume'}
+        </button>
+        {error && (
+          <p role="alert" className="rounded-md bg-red-50 px-3 py-2 text-xs text-red-700">
+            {error}
+          </p>
+        )}
+      </section>
+    </div>
+  );
+}

@@ -3,6 +3,7 @@ import { CareerProfile, JobContext, Settings, GenerationKind, Preferences } from
 import { getProvider } from '../lib/providers';
 import { updateProfile } from '../lib/storage';
 import { NEEDS_INFO_MARKER, NeedsInfo, parseNeedsInfo } from '../lib/prompts';
+import { PendingResume } from '../lib/tailoredResume';
 import { friendlyError } from '../lib/errors';
 import { getActiveJobContext, hasPageAccess, requestPageAccess } from './tabContext';
 import PreferencesEditor from './PreferencesEditor';
@@ -180,20 +181,17 @@ export default function Generator({
     try {
       const provider = await getProvider(settings);
       const tailored = await provider.tailorResume(withPrefs(profile), job);
-      await chrome.storage.session.set({
-        // matchStyle carries the design tokens extracted from the user's own
-        // uploaded resume, when they exist — the page offers them as a
-        // template. company/role feed the page title, which Chrome uses as
-        // the default Save-as-PDF filename.
-        pendingResume: {
-          resume: tailored,
-          matchStyle: profile.resumeStyle ?? null,
-          company: job.company ?? '',
-          role: job.role ?? '',
-          // The page's "Revise with AI" loop re-tailors against this JD.
-          jobDescription: job.jobDescription ?? '',
-        },
-      });
+      const payload: PendingResume = {
+        resume: tailored,
+        // Design tokens from the user's own uploaded resume, when they exist.
+        matchStyle: profile.resumeStyle ?? null,
+        // company/role feed the tab title → Chrome's Save-as-PDF filename.
+        company: job.company ?? '',
+        role: job.role ?? '',
+        // The Resume view's "Revise with AI" re-tailors against this JD.
+        jobDescription: job.jobDescription ?? '',
+      };
+      await chrome.storage.session.set({ pendingResume: payload });
       await chrome.tabs.create({ url: chrome.runtime.getURL('src/resume/index.html') });
     } catch (e) {
       setResumeError(friendlyError(e));

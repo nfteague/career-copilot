@@ -27,39 +27,28 @@ body {
   font: 13px system-ui, sans-serif;
 }
 
-.revise {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
+/* The print shell is a table so its thead/tfoot repeat on every printed page
+   as margin spacers; on screen it renders as plain blocks with the spacers
+   hidden. */
+.print-shell {
+  border-collapse: collapse;
+  border-spacing: 0;
   width: 100%;
 }
 
-.revise input {
-  flex: 1;
-  border: 0;
-  border-radius: 6px;
-  padding: 0.45rem 0.6rem;
-  font-size: 13px;
-  background: #1e293b;
-  color: #e2e8f0;
-}
+@media screen {
+  .print-shell,
+  .print-shell > tbody,
+  .print-shell > tbody > tr,
+  .print-shell > tbody > tr > td {
+    display: block;
+    width: 100%;
+  }
 
-.revise input::placeholder {
-  color: #64748b;
-}
-
-.revise-hint {
-  color: #64748b;
-  white-space: nowrap;
-}
-
-.revise-error {
-  width: 100%;
-  margin: 0;
-  border-radius: 6px;
-  padding: 0.45rem 0.6rem;
-  background: #7f1d1d;
-  color: #fecaca;
+  .print-shell > thead,
+  .print-shell > tfoot {
+    display: none;
+  }
 }
 
 .toolbar p {
@@ -257,16 +246,33 @@ li {
     display: none;
   }
 
-  /* Paper margins live here as padding, NOT on @page: Chrome renders its
-     print headers/footers (date, title, chrome-extension:// URL, page
-     numbers) inside the @page margin area, so zero @page margins suppress
-     them entirely — no print-dialog settings required. Tradeoff: on a
-     multi-page resume, pages after the first start at the paper edge. */
+  /* Zero @page margins suppress Chrome's print headers/footers (date,
+     title, chrome-extension:// URL, page numbers) — it only draws them in
+     the margin area. Vertical paper margins come from the print-shell's
+     repeating thead/tfoot spacers on EVERY page; horizontal ones live here. */
+  .print-shell {
+    display: table;
+    width: 100%;
+  }
+
+  .print-shell > thead {
+    display: table-header-group;
+  }
+
+  .print-shell > tfoot {
+    display: table-footer-group;
+  }
+
+  .sheet-margin td {
+    height: 0.6in;
+    padding: 0;
+  }
+
   .page {
     width: auto;
     min-height: 0;
     margin: 0;
-    padding: 0.6in;
+    padding: 0 0.6in;
     box-shadow: none;
   }
 

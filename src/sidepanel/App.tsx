@@ -5,8 +5,9 @@ import SettingsView from './Settings';
 import ProfileSetup from './ProfileSetup';
 import Generator from './Generator';
 import QuickCopyView from './QuickCopy';
+import ResumePanel from './ResumePanel';
 
-type View = 'generate' | 'profile' | 'quickcopy' | 'settings';
+type View = 'generate' | 'resume' | 'profile' | 'quickcopy' | 'settings';
 
 export default function App() {
   const [settings, setSettings] = useState<Settings | null>(null);
@@ -18,6 +19,21 @@ export default function App() {
   const [profileBusy, setProfileBusy] = useState(false);
   const [docBusy, setDocBusy] = useState(false);
   const [dumpDraft, setDumpDraft] = useState<string | null>(null);
+  // The Resume view appears only while a generated resume session exists.
+  const [hasResume, setHasResume] = useState(false);
+
+  useEffect(() => {
+    chrome.storage.session
+      .get('pendingResume')
+      .then((r) => setHasResume(r.pendingResume !== undefined));
+    const listener = (changes: Record<string, chrome.storage.StorageChange>, area: string) => {
+      if (area === 'session' && changes.pendingResume) {
+        setHasResume(changes.pendingResume.newValue !== undefined);
+      }
+    };
+    chrome.storage.onChanged.addListener(listener);
+    return () => chrome.storage.onChanged.removeListener(listener);
+  }, []);
 
   useEffect(() => {
     (async () => {
@@ -53,6 +69,8 @@ export default function App() {
     body = <SettingsView settings={settings} onSaved={setSettings} />;
   } else if (view === 'settings') {
     body = <SettingsView settings={settings} onSaved={setSettings} />;
+  } else if (view === 'resume' && hasResume) {
+    body = <ResumePanel profile={profile} settings={settings} />;
   } else if (view === 'quickcopy') {
     body = <QuickCopyView />;
   } else if (view === 'profile' || needsProfile) {
@@ -81,10 +99,17 @@ export default function App() {
           // empty strip.
           <h1 className="text-sm font-bold tracking-tight">Career Copilot</h1>
         ) : (
-          <nav aria-label="Career Copilot" className="flex w-full items-center gap-1 text-xs">
+          // gap-0.5 + px-1.5 buttons: measured to keep all five buttons
+          // (incl. the conditional Resume tab) on one line at 360px.
+          <nav aria-label="Career Copilot" className="flex w-full items-center gap-0.5 text-xs">
             <NavButton active={view === 'generate' && !needsProfile} onClick={() => setView('generate')} disabled={needsProfile}>
               Generate
             </NavButton>
+            {hasResume && (
+              <NavButton active={view === 'resume'} onClick={() => setView('resume')}>
+                Resume
+              </NavButton>
+            )}
             <NavButton active={view === 'profile' || needsProfile} onClick={() => setView('profile')}>
               Profile
             </NavButton>
@@ -127,7 +152,7 @@ function NavButton({
       onClick={onClick}
       disabled={disabled}
       aria-current={active ? 'page' : undefined}
-      className={`rounded-md px-2.5 py-1 font-medium ${
+      className={`whitespace-nowrap rounded-md px-1.5 py-1 font-medium ${
         active ? 'bg-slate-900 text-white' : 'text-slate-500 hover:bg-slate-100'
       } disabled:opacity-30`}
     >
