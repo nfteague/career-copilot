@@ -22,7 +22,7 @@ Everything to copy-paste into the Developer Dashboard, plus the answers for the 
 >
 > HOW IT WORKS
 >
-> 1. Build your profile once. Upload your resume (PDF), brain-dump the things resumes leave out, and attach supporting documents — writing samples, case studies, even interview transcripts. Everything merges into one structured profile you can review and edit.
+> 1. Build your profile once. Upload your resume (PDF or DOCX), brain-dump the things resumes leave out, and attach supporting documents — writing samples, case studies, even interview transcripts. Everything merges into one structured profile you can review and edit.
 >
 > 2. Open a job posting and click "Get Job." The company, role, and description are pulled straight from the page — works on major job boards, applicant-tracking systems, and any site that publishes standard job metadata.
 >

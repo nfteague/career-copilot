@@ -18,8 +18,15 @@ import {
 import { getProvider } from '../lib/providers';
 import { friendlyError } from '../lib/errors';
 import { MAX_DOC_CHARS } from '../lib/prompts';
+import { DOCX_MIME, docxToText, isDocxFile, isLegacyDocFile } from '../lib/docx';
 import { fileToBase64 } from './tabContext';
 import ProfileEditor from './ProfileEditor';
+
+// Reject absurdly large uploads before reading them; a real resume or
+// supporting document is a fraction of this.
+const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
+
+const RESUME_ACCEPT = `application/pdf,.pdf,.docx,${DOCX_MIME}`;
 
 type Tab = 'docs' | 'braindump' | 'questions' | 'review';
 
@@ -114,20 +121,43 @@ export default function ProfileSetup({
     const file = e.target.files?.[0];
     e.target.value = ''; // allow re-selecting the same file
     if (!file) return;
-    if (file.type !== 'application/pdf') {
-      setError('Please upload a PDF. (DOCX support is coming — for now, paste the text instead.)');
+    if (file.size > MAX_UPLOAD_BYTES) {
+      setError('That file is too large.');
       return;
     }
-    const base64 = await fileToBase64(file);
+    if (isLegacyDocFile(file)) {
+      setError("Legacy .doc files aren't supported — save it as .docx or PDF first.");
+      return;
+    }
+    const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+    if (!isPdf && !isDocxFile(file)) {
+      setError('Please upload a PDF or DOCX file.');
+      return;
+    }
+    const marker = { resume: { filename: file.name, uploadedAt: new Date().toISOString() } };
     // Merge onto the existing profile so narrative/preferences survive
-    // re-ingest, and record which resume was read.
-    await ingest(
-      async () => ({
-        ...(await (await getProvider(settings)).ingestPdf(base64, profile)),
-        resume: { filename: file.name, uploadedAt: new Date().toISOString() },
-      }),
-      { resume: true },
-    );
+    // re-ingest, and record which resume was read. PDFs go to the model
+    // directly; DOCX is extracted to text locally and structured via the
+    // same text-ingestion path the brain-dump uses.
+    if (isPdf) {
+      const base64 = await fileToBase64(file);
+      await ingest(
+        async () => ({
+          ...(await (await getProvider(settings)).ingestPdf(base64, profile)),
+          ...marker,
+        }),
+        { resume: true },
+      );
+    } else {
+      await ingest(async () => {
+        const text = await docxToText(file);
+        if (!text) throw new Error('That document appears to be empty.');
+        return {
+          ...(await (await getProvider(settings)).ingestText(text, profile)),
+          ...marker,
+        };
+      }, { resume: true });
+    }
   }
 
   async function updatePartial(patch: Partial<CareerProfile>) {
@@ -284,7 +314,7 @@ function ResumeSection({
               Replace
               <input
                 type="file"
-                accept="application/pdf"
+                accept={RESUME_ACCEPT}
                 onChange={onFile}
                 disabled={busy}
                 className="sr-only"
@@ -303,17 +333,23 @@ function ResumeSection({
       ) : (
         <input
           type="file"
-          accept="application/pdf"
+          accept={RESUME_ACCEPT}
           onChange={onFile}
           disabled={busy}
-          aria-label="Upload resume (PDF)"
+          aria-label="Upload resume (PDF or DOCX)"
           className="block w-full text-sm"
         />
       )}
       <p className="text-xs text-slate-500">
-        Reading a resume updates the Experience, Education, and Skills in Review — existing entries
-        are kept, new ones added.
+        Reading a resume (PDF or DOCX) updates the Experience, Education, and Skills in Review —
+        existing entries are kept, new ones added.
       </p>
+      {!meta && (
+        <p className="text-xs text-slate-500">
+          Tip: no resume handy? On your LinkedIn profile, <strong>More → Save to PDF</strong>{' '}
+          downloads a resume-style PDF that works here.
+        </p>
+      )}
       {notice && (
         <p role="status" className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">
           {notice}
@@ -456,6 +492,14 @@ function DocumentsTab({
       setError('Add a label first, then choose the file.');
       return;
     }
+    if (file.size > MAX_UPLOAD_BYTES) {
+      setError('That file is too large.');
+      return;
+    }
+    if (isLegacyDocFile(file)) {
+      setError("Legacy .doc files aren't supported — save it as .docx or PDF first.");
+      return;
+    }
     const name = file.name.toLowerCase();
     const isPdf = file.type === 'application/pdf' || name.endsWith('.pdf');
     setReading(true);
@@ -474,6 +518,9 @@ function DocumentsTab({
           truncNote =
             'That PDF was longer than the model could transcribe in one pass — the beginning was captured. Consider splitting it and uploading the rest separately.';
         }
+      } else if (isDocxFile(file)) {
+        // Extracted locally — cheaper and faster than the PDF transcription path.
+        content = await docxToText(file);
       } else {
         // Text-based files (JSON transcripts, TXT, MD, CSV) are stored as-is.
         content = await file.text();
@@ -507,9 +554,9 @@ function DocumentsTab({
       <h3 className="text-sm font-semibold">Supporting documents</h3>
       <p className="text-sm text-slate-600">
         Attach extra material with your own label — past cover letters, writing samples, case
-        studies, an interview transcript. Paste text, or upload a PDF or text file (TXT, MD, JSON,
-        CSV). Cover letters and writing samples shape the voice of your drafts; everything else
-        informs them as context.
+        studies, an interview transcript. Paste text, or upload a PDF, DOCX, or text file (TXT,
+        MD, JSON, CSV). Cover letters and writing samples shape the voice of your drafts;
+        everything else informs them as context.
       </p>
 
       {DOC_GROUPS.map(({ cat, title, voice }) => {
@@ -643,7 +690,7 @@ function DocumentsTab({
             or upload a file
             <input
               type="file"
-              accept=".pdf,.txt,.md,.json,.csv,application/pdf,application/json,text/plain,text/markdown,text/csv"
+              accept={`.pdf,.docx,.txt,.md,.json,.csv,application/pdf,${DOCX_MIME},application/json,text/plain,text/markdown,text/csv`}
               onChange={addFile}
               disabled={busy}
               className="sr-only"
