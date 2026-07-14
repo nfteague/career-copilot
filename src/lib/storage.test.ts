@@ -6,11 +6,15 @@ const store = new Map<string, unknown>();
 (globalThis as any).chrome = {
   storage: {
     local: {
-      async get(key: string) {
-        return { [key]: store.get(key) };
+      async get(keys: string | string[]) {
+        const list = Array.isArray(keys) ? keys : [keys];
+        return Object.fromEntries(list.map((k) => [k, store.get(k)]));
       },
       async set(items: Record<string, unknown>) {
         for (const [k, v] of Object.entries(items)) store.set(k, v);
+      },
+      async remove(key: string) {
+        store.delete(key);
       },
     },
     onChanged: { addListener() {}, removeListener() {} },
@@ -22,6 +26,7 @@ const {
   saveProfile,
   updateProfile,
   backupProfile,
+  getProfileBackups,
   hasProfileBackup,
   restoreProfileBackup,
   getSettings,
@@ -63,26 +68,69 @@ describe('updateProfile', () => {
 });
 
 describe('backup / restore', () => {
-  it('snapshots and restores, swapping so restore is reversible', async () => {
+  it('stamps snapshots with a reason and restores by id, reversibly', async () => {
     const before = emptyProfile();
     before.narrative = 'BEFORE';
     await saveProfile(before);
-    await backupProfile();
-
+    await backupProfile('import');
     await updateProfile((p) => ({ ...p, narrative: 'AFTER-BAD-MERGE' }));
+
+    const backups = await getProfileBackups();
+    expect(backups).toHaveLength(1);
+    expect(backups[0].reason).toBe('import');
+    expect(backups[0].savedAt).toBeTruthy();
     expect(await hasProfileBackup()).toBe(true);
 
-    const restored = await restoreProfileBackup();
+    const restored = await restoreProfileBackup(backups[0].id);
     expect(restored?.narrative).toBe('BEFORE');
     expect((await getProfile()).narrative).toBe('BEFORE');
 
-    // Restoring again undoes the restore.
-    const swappedBack = await restoreProfileBackup();
-    expect(swappedBack?.narrative).toBe('AFTER-BAD-MERGE');
+    // The replaced profile was pushed as a new 'restore' backup — restoring
+    // it undoes the restore.
+    const after = await getProfileBackups();
+    expect(after[0].reason).toBe('restore');
+    const undone = await restoreProfileBackup(after[0].id);
+    expect(undone?.narrative).toBe('AFTER-BAD-MERGE');
   });
 
-  it('returns null when there is no backup', async () => {
-    expect(await restoreProfileBackup()).toBeNull();
+  it('keeps at most 5 backups, newest first', async () => {
+    for (let i = 0; i < 7; i++) {
+      await updateProfile((p) => ({ ...p, narrative: `v${i}` }));
+      await backupProfile('brain-dump');
+    }
+    const backups = await getProfileBackups();
+    expect(backups).toHaveLength(5);
+    expect(backups[0].profile.narrative).toBe('v6');
+    expect(backups[4].profile.narrative).toBe('v2');
+  });
+
+  it('migrates the legacy single-slot backup into the list once', async () => {
+    const legacy = emptyProfile();
+    legacy.narrative = 'LEGACY';
+    store.set('careerProfileBackup', legacy);
+
+    const backups = await getProfileBackups();
+    expect(backups).toHaveLength(1);
+    expect(backups[0].reason).toBe('unknown');
+    expect(backups[0].profile.narrative).toBe('LEGACY');
+    expect(store.has('careerProfileBackup')).toBe(false);
+    expect(await hasProfileBackup()).toBe(true);
+  });
+
+  it('returns null for an unknown id and when there are no backups', async () => {
+    expect(await restoreProfileBackup('nope')).toBeNull();
+  });
+
+  it('does not re-migrate the legacy slot once the list exists (racing reader)', async () => {
+    await backupProfile('import'); // the list now exists
+    const legacy = emptyProfile();
+    legacy.narrative = 'LEGACY-LEFTOVER';
+    store.set('careerProfileBackup', legacy); // simulates a racing reader's view
+
+    const backups = await getProfileBackups();
+    expect(backups).toHaveLength(1); // leftover cleared, not folded in again
+    expect(backups[0].reason).toBe('import');
+    expect(store.has('careerProfileBackup')).toBe(false);
   });
 });
 

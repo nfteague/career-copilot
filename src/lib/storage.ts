@@ -41,27 +41,89 @@ export async function updateProfile(
   return next;
 }
 
-// Safety net around destructive operations (ingest merges, clear-all): keep
-// one snapshot of the profile as it was before, restorable from the UI.
-export async function backupProfile(): Promise<void> {
+// Safety net around destructive operations (ingest merges, imports, clear-all):
+// a bounded, newest-first list of snapshots, each stamped with when and why it
+// was taken. Small enough to stay well inside the chrome.storage.local quota.
+const BACKUPS_KEY = 'careerProfileBackups';
+const MAX_BACKUPS = 5;
+
+export type BackupReason =
+  | 'resume-upload'
+  | 'brain-dump'
+  | 'import'
+  | 'clear'
+  | 'restore'
+  | 'unknown';
+
+export interface ProfileBackup {
+  id: string;
+  savedAt: string; // ISO; '' when unknown (a migrated pre-list backup)
+  reason: BackupReason;
+  profile: CareerProfile;
+}
+
+// Read the backup list, folding the legacy single-slot backup in once.
+export async function getProfileBackups(): Promise<ProfileBackup[]> {
+  const stored = await chrome.storage.local.get([BACKUPS_KEY, BACKUP_KEY]);
+  const list = (stored[BACKUPS_KEY] as ProfileBackup[] | undefined) ?? [];
+  const legacy = stored[BACKUP_KEY] as CareerProfile | undefined;
+  if (!legacy) return list;
+  // Fold the legacy slot in only when the list has never been written — this
+  // keeps the migration idempotent when two panel windows race through it
+  // (the loser just clears the already-migrated slot).
+  if (stored[BACKUPS_KEY] !== undefined) {
+    await chrome.storage.local.remove(BACKUP_KEY);
+    return list;
+  }
+  const migrated = [
+    ...list,
+    {
+      id: crypto.randomUUID(),
+      savedAt: typeof legacy.updatedAt === 'string' ? legacy.updatedAt : '',
+      reason: 'unknown' as const,
+      profile: { ...emptyProfile(), ...legacy },
+    },
+  ].slice(0, MAX_BACKUPS);
+  await chrome.storage.local.set({ [BACKUPS_KEY]: migrated });
+  await chrome.storage.local.remove(BACKUP_KEY);
+  return migrated;
+}
+
+export async function backupProfile(reason: BackupReason): Promise<void> {
   const current = await getProfile();
-  await chrome.storage.local.set({ [BACKUP_KEY]: current });
+  const backups = await getProfileBackups();
+  const entry: ProfileBackup = {
+    id: crypto.randomUUID(),
+    savedAt: new Date().toISOString(),
+    reason,
+    profile: current,
+  };
+  await chrome.storage.local.set({ [BACKUPS_KEY]: [entry, ...backups].slice(0, MAX_BACKUPS) });
 }
 
 export async function hasProfileBackup(): Promise<boolean> {
-  return (await chrome.storage.local.get(BACKUP_KEY))[BACKUP_KEY] !== undefined;
+  return (await getProfileBackups()).length > 0;
 }
 
-// Restore the snapshot, swapping the current profile into the backup slot so a
-// second restore undoes the restore.
-export async function restoreProfileBackup(): Promise<CareerProfile | null> {
-  const stored = (await chrome.storage.local.get(BACKUP_KEY))[BACKUP_KEY] as
-    | CareerProfile
-    | undefined;
-  if (!stored) return null;
+// Apply the selected backup. Non-destructive: the current profile is pushed
+// onto the list first (reason 'restore'), so any restore is itself undoable
+// from the same view.
+export async function restoreProfileBackup(id: string): Promise<CareerProfile | null> {
+  const backups = await getProfileBackups();
+  const target = backups.find((b) => b.id === id);
+  if (!target) return null;
   const current = await getProfile();
-  const restored = { ...emptyProfile(), ...stored };
-  await chrome.storage.local.set({ [PROFILE_KEY]: restored, [BACKUP_KEY]: current });
+  const entry: ProfileBackup = {
+    id: crypto.randomUUID(),
+    savedAt: new Date().toISOString(),
+    reason: 'restore',
+    profile: current,
+  };
+  const restored = { ...emptyProfile(), ...target.profile };
+  await chrome.storage.local.set({
+    [PROFILE_KEY]: restored,
+    [BACKUPS_KEY]: [entry, ...backups].slice(0, MAX_BACKUPS),
+  });
   return restored;
 }
 

@@ -9,9 +9,12 @@ import {
   emptyProfile,
 } from '../lib/types';
 import {
+  BackupReason,
+  ProfileBackup,
   saveProfile,
   updateProfile,
   backupProfile,
+  getProfileBackups,
   hasProfileBackup,
   restoreProfileBackup,
 } from '../lib/storage';
@@ -66,6 +69,8 @@ export default function ProfileSetup({
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [canUndo, setCanUndo] = useState(false);
+  // Sub-view of Review listing the backup snapshots.
+  const [showBackups, setShowBackups] = useState(false);
   // One combined flag so the two provider-calling surfaces (resume ingest,
   // doc transcription) can never run concurrently.
   const anyBusy = busy || docBusy;
@@ -76,17 +81,19 @@ export default function ProfileSetup({
 
   async function ingest(
     fn: () => Promise<CareerProfile>,
-    owns: { narrative?: boolean; resume?: boolean } = {},
+    opts: { narrative?: boolean; resume?: boolean; reason: BackupReason },
   ): Promise<boolean> {
     const startTab = tab;
+    const owns = opts;
     onBusyChange(true);
     setError('');
     setNotice('');
     try {
       const next = await fn();
-      // Snapshot the pre-ingest profile first — model-driven merges can drop
-      // data, and this makes every import undoable.
-      await backupProfile();
+      // Snapshot the latest stored profile (post-model-call, pre-merge) —
+      // model-driven merges can drop data, and this makes them undoable
+      // without losing edits that landed while the call was in flight.
+      await backupProfile(opts.reason);
       // The extraction ran against a snapshot of the profile; docs, answers,
       // or narrative context may have been saved elsewhere (Generator, other
       // tabs, another window's panel) while the model call was in flight.
@@ -115,12 +122,14 @@ export default function ProfileSetup({
     }
   }
 
-  async function undo() {
-    const restored = await restoreProfileBackup();
+  async function restoreBackup(id: string) {
+    const restored = await restoreProfileBackup(id);
     if (restored) {
       // A pending brain-dump draft belongs to the profile being swapped out.
       onDumpDraftChange(null);
       onChange(restored);
+      setShowBackups(false);
+      setNotice('Profile restored — the replaced profile was saved as a new backup.');
     }
   }
 
@@ -154,7 +163,7 @@ export default function ProfileSetup({
           ...(await (await getProvider(settings)).ingestPdf(base64, profile)),
           ...marker,
         }),
-        { resume: true },
+        { resume: true, reason: 'resume-upload' },
       );
     } else {
       await ingest(async () => {
@@ -164,7 +173,7 @@ export default function ProfileSetup({
           ...(await (await getProvider(settings)).ingestText(text, profile)),
           ...marker,
         };
-      }, { resume: true });
+      }, { resume: true, reason: 'resume-upload' });
     }
   }
 
@@ -173,7 +182,7 @@ export default function ProfileSetup({
   }
 
   async function clearAll() {
-    await backupProfile(); // clearing everything must be undoable too
+    await backupProfile('clear'); // clearing everything must be undoable too
     const fresh = emptyProfile();
     await saveProfile(fresh);
     setCanUndo(true);
@@ -216,14 +225,14 @@ export default function ProfileSetup({
     }
     setError('');
     // Import REPLACES the profile wholesale; the pre-import backup is the undo.
-    await backupProfile();
+    await backupProfile('import');
     await saveProfile(imported);
     setCanUndo(true);
     // A pending brain-dump draft belongs to the replaced profile — drop it so
     // it can't mask (or later overwrite) the imported narrative.
     onDumpDraftChange(null);
     onChange(imported);
-    setNotice('Profile imported — the previous profile is available under "Restore previous version."');
+    setNotice('Profile imported — the previous profile is available under "Restore a backup."');
   }
 
   return (
@@ -232,7 +241,10 @@ export default function ProfileSetup({
         {(['docs', 'braindump', 'questions', 'review'] as Tab[]).map((t) => (
           <button
             key={t}
-            onClick={() => setTab(t)}
+            onClick={() => {
+              setTab(t);
+              setShowBackups(false);
+            }}
             aria-pressed={tab === t}
             className={`flex-1 rounded-md px-2 py-1.5 font-medium ${
               tab === t ? 'bg-white shadow-sm' : 'text-slate-500'
@@ -298,7 +310,11 @@ export default function ProfileSetup({
 
       {tab === 'questions' && <QuestionsTab profile={profile} onChange={onChange} />}
 
-      {tab === 'review' && (
+      {tab === 'review' && showBackups && (
+        <BackupsView busy={anyBusy} onRestore={restoreBackup} onBack={() => setShowBackups(false)} />
+      )}
+
+      {tab === 'review' && !showBackups && (
         <div className="space-y-3">
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
             <button
@@ -323,11 +339,11 @@ export default function ProfileSetup({
             </label>
             {canUndo && (
               <button
-                onClick={undo}
-                title="Swap back to the profile as it was before the last import or clear"
+                onClick={() => setShowBackups(true)}
+                title="Snapshots taken before every resume upload, brain-dump structuring, import, and clear"
                 className="font-medium text-slate-500 underline hover:text-slate-800"
               >
-                Restore previous version
+                Restore a backup
               </button>
             )}
           </div>
@@ -430,6 +446,111 @@ function ResumeSection({
         </p>
       )}
     </section>
+  );
+}
+
+// ---- Backups -----------------------------------------------------------------
+
+const BACKUP_REASON_LABELS: Record<BackupReason, string> = {
+  'resume-upload': 'Before resume upload',
+  'brain-dump': 'Before brain-dump structuring',
+  import: 'Before profile import',
+  clear: 'Before clearing all data',
+  restore: 'Replaced by a restore',
+  unknown: 'Earlier version',
+};
+
+function backupWhen(savedAt: string): string {
+  if (!savedAt) return '';
+  return new Date(savedAt).toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+}
+
+// One-line fingerprint so similar-looking snapshots can be told apart.
+function backupFingerprint(p: CareerProfile): string {
+  const n = (count: number, word: string) => `${count} ${word}${count === 1 ? '' : 's'}`;
+  const stats = [
+    n(p.experience.length, 'role'),
+    n(p.supportingDocs.length, 'doc'),
+    n(p.qa.length, 'question'),
+  ].join(' · ');
+  return [p.basics.name, stats].filter(Boolean).join(' — ');
+}
+
+function BackupsView({
+  busy,
+  onRestore,
+  onBack,
+}: {
+  busy: boolean;
+  onRestore: (id: string) => void;
+  onBack: () => void;
+}) {
+  const [backups, setBackups] = useState<ProfileBackup[] | null>(null);
+
+  // Re-fetch when an in-flight ingest finishes so its fresh snapshot appears
+  // without leaving and re-entering the view.
+  useEffect(() => {
+    if (!busy) getProfileBackups().then(setBackups);
+  }, [busy]);
+
+  return (
+    <div className="space-y-3">
+      <button
+        onClick={onBack}
+        className="text-xs font-medium text-slate-500 underline hover:text-slate-800"
+      >
+        ← Back to Review
+      </button>
+      <p className="text-sm text-slate-600">
+        Snapshots taken automatically before anything destructive. Restoring saves your current
+        profile here first, so it's always reversible.
+      </p>
+      {backups === null ? (
+        <p role="status" className="text-xs text-slate-500">
+          Loading…
+        </p>
+      ) : backups.length === 0 ? (
+        <p className="text-xs text-slate-400">No backups yet.</p>
+      ) : (
+        <ul className="space-y-2">
+          {backups.map((b) => (
+            <li
+              key={b.id}
+              className="flex items-center justify-between gap-2 rounded-md border border-slate-200 bg-white px-3 py-2"
+            >
+              <span className="min-w-0 text-sm">
+                <span className="block font-medium">
+                  {BACKUP_REASON_LABELS[b.reason] ?? BACKUP_REASON_LABELS.unknown}
+                  {backupWhen(b.savedAt) && (
+                    <span className="ml-1.5 text-xs font-normal text-slate-400">
+                      {backupWhen(b.savedAt)}
+                    </span>
+                  )}
+                </span>
+                <span className="block truncate text-xs text-slate-500">
+                  {backupFingerprint(b.profile)}
+                </span>
+              </span>
+              <button
+                onClick={() => onRestore(b.id)}
+                disabled={busy}
+                aria-label={`Restore backup: ${BACKUP_REASON_LABELS[b.reason] ?? 'earlier version'}${
+                  backupWhen(b.savedAt) ? `, ${backupWhen(b.savedAt)}` : ''
+                }`}
+                className="shrink-0 rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium hover:bg-slate-100 disabled:opacity-40"
+              >
+                Restore
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }
 
@@ -793,7 +914,7 @@ function BrainDumpTab({
   busy: boolean;
   ingest: (
     fn: () => Promise<CareerProfile>,
-    owns: { narrative?: boolean; resume?: boolean },
+    opts: { narrative?: boolean; resume?: boolean; reason: BackupReason },
   ) => Promise<boolean>;
   onChange: (p: CareerProfile) => void;
   // Unsaved edits live in App (null = no edits) so navigation doesn't
@@ -829,7 +950,7 @@ function BrainDumpTab({
         ...(await (await getProvider(settings)).ingestText(text, profile)),
         narrative: text,
       }),
-      { narrative: true },
+      { narrative: true, reason: 'brain-dump' },
     );
     if (ok) onDraftChange(null);
   }

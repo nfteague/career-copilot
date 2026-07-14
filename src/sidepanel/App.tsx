@@ -75,10 +75,13 @@ export default function App() {
 
   return (
     <div className="flex h-screen flex-col">
-      <header className="flex items-center justify-between border-b border-slate-200 bg-white px-4 py-3">
-        <h1 className="text-sm font-bold tracking-tight">Career Copilot</h1>
-        {!needsKey && (
-          <nav className="flex gap-1 text-xs">
+      <header className="flex items-center border-b border-slate-200 bg-white px-4 py-3">
+        {needsKey ? (
+          // Nav is hidden until a key exists — show the brand instead of an
+          // empty strip.
+          <h1 className="text-sm font-bold tracking-tight">Career Copilot</h1>
+        ) : (
+          <nav aria-label="Career Copilot" className="flex w-full items-center gap-1 text-xs">
             <NavButton active={view === 'generate' && !needsProfile} onClick={() => setView('generate')} disabled={needsProfile}>
               Generate
             </NavButton>
@@ -88,9 +91,11 @@ export default function App() {
             <NavButton active={view === 'quickcopy'} onClick={() => setView('quickcopy')}>
               Quick Copy
             </NavButton>
-            <NavButton active={view === 'settings'} onClick={() => setView('settings')}>
-              Settings
-            </NavButton>
+            <span className="ml-auto">
+              <NavButton active={view === 'settings'} onClick={() => setView('settings')}>
+                Settings
+              </NavButton>
+            </span>
           </nav>
         )}
       </header>
