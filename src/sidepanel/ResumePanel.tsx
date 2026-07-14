@@ -68,11 +68,18 @@ export default function ResumePanel({
 
   const { resume } = pending;
   const hidden = pending.hidden ?? EMPTY_HIDDEN;
-  // Profile projects the AI didn't select for this resume — addable via a
-  // seeded revision (matched loosely by name; the model may rephrase).
+  // Profile entries the AI didn't put on this resume — addable via a seeded
+  // revision (matched loosely; the model may rephrase names). Roles should
+  // always be present per the prompt rules, so addableRoles is defensive.
   const usedProjectNames = new Set(resume.projects.map((p) => p.name.trim().toLowerCase()));
   const addableProjects = profile.projects.filter(
     (p) => p.name.trim() && !usedProjectNames.has(p.name.trim().toLowerCase()),
+  );
+  const roleKey = (title: string, company: string) =>
+    `${title} — ${company}`.trim().toLowerCase();
+  const usedRoles = new Set(resume.experience.map((e) => roleKey(e.title, e.company)));
+  const addableRoles = profile.experience.filter(
+    (e) => (e.title.trim() || e.company.trim()) && !usedRoles.has(roleKey(e.title, e.company)),
   );
 
   async function write(next: PendingResume) {
@@ -87,9 +94,17 @@ export default function ResumePanel({
   const toggle = (list: number[], i: number) =>
     list.includes(i) ? list.filter((x) => x !== i) : [...list, i];
 
-  function sectionPresent(key: ResumeSectionKey): boolean {
+  function tailoredPresent(key: ResumeSectionKey): boolean {
     if (key === 'summary') return resume.summary.trim().length > 0;
     return resume[key].length > 0;
+  }
+
+  // A section row also shows when it has addable profile entries, so the
+  // "＋ add" affordances live under their related section.
+  function sectionPresent(key: ResumeSectionKey): boolean {
+    if (key === 'experience' && addableRoles.length > 0) return true;
+    if (key === 'projects' && addableProjects.length > 0) return true;
+    return tailoredPresent(key);
   }
 
   async function openTab() {
@@ -155,20 +170,28 @@ export default function ResumePanel({
             const sectionOn = !hidden.sections.includes(key);
             return (
               <div key={key} className="space-y-1">
-                <label className="flex items-center gap-2 text-sm text-slate-700">
-                  <input
-                    type="checkbox"
-                    checked={sectionOn}
-                    onChange={() =>
-                      withHidden({
-                        sections: sectionOn
-                          ? [...hidden.sections, key]
-                          : hidden.sections.filter((s) => s !== key),
-                      })
-                    }
-                  />
-                  {SECTION_LABELS[key]}
-                </label>
+                {tailoredPresent(key) ? (
+                  <label className="flex items-center gap-2 text-sm text-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={sectionOn}
+                      onChange={() =>
+                        withHidden({
+                          sections: sectionOn
+                            ? [...hidden.sections, key]
+                            : hidden.sections.filter((s) => s !== key),
+                        })
+                      }
+                    />
+                    {SECTION_LABELS[key]}
+                  </label>
+                ) : (
+                  // Nothing from this section made the resume — no checkbox
+                  // to toggle, just a home for the "＋ add" rows below.
+                  <span className="flex items-center gap-2 text-sm text-slate-400">
+                    {SECTION_LABELS[key]}
+                  </span>
+                )}
                 {key === 'experience' && sectionOn && (
                   <div className="ml-6 space-y-1">
                     {resume.experience.map((e, i) => (
@@ -200,6 +223,23 @@ export default function ResumePanel({
                         )}
                       </div>
                     ))}
+                    {addableRoles.map((e) => (
+                      <button
+                        key={e.id}
+                        onClick={() =>
+                          seedRevision(
+                            `Add the "${e.title} — ${e.company}" role from my profile with dates and 1-2 tailored bullets.`,
+                          )
+                        }
+                        title="Not on this resume — ask the AI to add it (fills the revision box below)"
+                        className="flex w-full items-center gap-2 text-left text-sm text-slate-400 hover:text-slate-700"
+                      >
+                        <span aria-hidden="true">＋</span>
+                        <span className="min-w-0 truncate">
+                          {e.title} — {e.company}
+                        </span>
+                      </button>
+                    ))}
                   </div>
                 )}
                 {key === 'projects' && sectionOn && (
@@ -214,33 +254,27 @@ export default function ResumePanel({
                         <span className="min-w-0 truncate">{p.name}</span>
                       </label>
                     ))}
+                    {addableProjects.map((p) => (
+                      <button
+                        key={p.id}
+                        onClick={() =>
+                          seedRevision(
+                            `Add the project "${p.name}" with 1-2 bullets tailored to this job.`,
+                          )
+                        }
+                        title="Not on this resume — ask the AI to add it (fills the revision box below)"
+                        className="flex w-full items-center gap-2 text-left text-sm text-slate-400 hover:text-slate-700"
+                      >
+                        <span aria-hidden="true">＋</span>
+                        <span className="min-w-0 truncate">{p.name}</span>
+                      </button>
+                    ))}
                   </div>
                 )}
               </div>
             );
           })}
       </section>
-
-      {addableProjects.length > 0 && (
-        <section className="space-y-1.5">
-          <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-            Not on this resume
-          </h3>
-          {addableProjects.map((p) => (
-            <button
-              key={p.id}
-              onClick={() =>
-                seedRevision(`Add the project "${p.name}" with 1-2 bullets tailored to this job.`)
-              }
-              title="Ask the AI to add this project (fills the revision box below)"
-              className="flex w-full items-center gap-2 text-left text-sm text-slate-400 hover:text-slate-700"
-            >
-              <span aria-hidden="true">＋</span>
-              <span className="min-w-0 truncate">{p.name}</span>
-            </button>
-          ))}
-        </section>
-      )}
 
       <section className="space-y-2">
         <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
