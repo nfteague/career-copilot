@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ResumeSectionKey, ResumeStyle, TailoredResume } from '../lib/types';
 import { getResumeTemplateChoice, saveResumeTemplateChoice } from '../lib/storage';
 import {
@@ -14,7 +14,22 @@ interface ResumeHandoff {
   resume: TailoredResume;
   // Design tokens extracted from the user's own uploaded resume, if any.
   matchStyle: ResumeStyle | null;
+  // Feed the document title → Chrome's default Save-as-PDF filename.
+  company?: string;
+  role?: string;
 }
+
+// "{name}_{company}_{role}.pdf" — tells the user which file to pick in an
+// application, and reads professionally if a recruiter ever sees it.
+function documentTitle(h: ResumeHandoff): string {
+  const clean = (s: string) => s.replace(/[\\/:*?"<>|]/g, '').replace(/\s+/g, ' ').trim();
+  const parts = [h.resume.header.name, h.company ?? '', h.role ?? ''].map(clean).filter(Boolean);
+  return parts.length ? parts.join('_') : 'Tailored resume';
+}
+
+// Printable inches per letter page after the @page margins (11in − 2×0.6in).
+const PRINTABLE_IN_PER_PAGE = 9.8;
+const PX_PER_IN = 96;
 
 // Renders the tailored resume as a print-first page: real text
 // (ATS-parseable), letter-sized, everything editable in place.
@@ -26,6 +41,9 @@ export default function ResumePage() {
   const [handoff, setHandoff] = useState<ResumeHandoff | null>(null);
   const [missing, setMissing] = useState(false);
   const [template, setTemplate] = useState<TemplateId>(DEFAULT_TEMPLATE);
+  // Estimated printed page count, measured from the rendered content.
+  const [pageCount, setPageCount] = useState(1);
+  const pageRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
     (async () => {
@@ -38,11 +56,27 @@ export default function ResumePage() {
       const h: ResumeHandoff =
         'resume' in raw ? (raw as ResumeHandoff) : { resume: raw as TailoredResume, matchStyle: null };
       setHandoff(h);
+      document.title = documentTitle(h);
       const choice = (await getResumeTemplateChoice()) as TemplateId | '';
       if (choice && (choice !== 'match' || h.matchStyle)) setTemplate(choice);
       else if (h.matchStyle) setTemplate('match');
     })();
   }, []);
+
+  // Screen padding doesn't print, so subtract it before converting the
+  // rendered height into printed pages.
+  function measurePages() {
+    const el = pageRef.current;
+    if (!el) return;
+    const styles = getComputedStyle(el);
+    const padding = parseFloat(styles.paddingTop) + parseFloat(styles.paddingBottom);
+    const contentIn = (el.scrollHeight - padding) / PX_PER_IN;
+    setPageCount(Math.max(1, Math.ceil(contentIn / PRINTABLE_IN_PER_PAGE)));
+  }
+
+  useEffect(() => {
+    measurePages();
+  }, [handoff, template]);
 
   function chooseTemplate(id: TemplateId) {
     setTemplate(id);
@@ -95,6 +129,9 @@ export default function ResumePage() {
       <div className="toolbar">
         <p>
           Click into the resume to edit anything, then save it as a PDF.
+          {pageCount === 1
+            ? ' Fits on one page.'
+            : ` About ${pageCount} pages when printed — trim bullets or try the Compact template.`}
           {noName && ' No name set — click the heading to type it, or add it in Profile → Review.'}
         </p>
         <div className="controls">
@@ -115,10 +152,12 @@ export default function ResumePage() {
       </div>
 
       <article
+        ref={pageRef}
         className={pageClass}
         style={style.accent ? ({ '--accent': style.accent } as React.CSSProperties) : undefined}
         contentEditable
         suppressContentEditableWarning
+        onInput={measurePages}
       >
         <header style={{ order: 0 }}>
           <h1>{noName ? 'Your Name' : resume.header.name}</h1>

@@ -182,8 +182,15 @@ export default function Generator({
       const tailored = await provider.tailorResume(withPrefs(profile), job);
       await chrome.storage.session.set({
         // matchStyle carries the design tokens extracted from the user's own
-        // uploaded resume, when they exist — the page offers them as a template.
-        pendingResume: { resume: tailored, matchStyle: profile.resumeStyle ?? null },
+        // uploaded resume, when they exist — the page offers them as a
+        // template. company/role feed the page title, which Chrome uses as
+        // the default Save-as-PDF filename.
+        pendingResume: {
+          resume: tailored,
+          matchStyle: profile.resumeStyle ?? null,
+          company: job.company ?? '',
+          role: job.role ?? '',
+        },
       });
       await chrome.tabs.create({ url: chrome.runtime.getURL('src/resume/index.html') });
     } catch (e) {
@@ -277,8 +284,9 @@ export default function Generator({
             and the kind toggle below — it opens a tab, so no misclicks. */}
         <div className="space-y-2 py-3">
           <p className="text-xs text-slate-500">
-            Generate a one-page resume built from your profile and tailored to this job's
-            description and company — then review, tweak, and save it as a PDF.
+            Generate a resume built from your profile and tailored to this job's description and
+            company — it aims for one tight page, and you can review, tweak, and save it as a
+            PDF.
           </p>
           <button
             onClick={makeResume}
