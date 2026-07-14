@@ -1,4 +1,4 @@
-import { CareerProfile, JobContext, GenerationKind, emptyProfile } from '../types';
+import { CareerProfile, JobContext, GenerationKind, TailoredResume, emptyProfile } from '../types';
 
 export const MAX_OUTPUT_TOKENS = 8000;
 // Transcribing a long PDF (e.g. an interview transcript) needs far more output
@@ -26,6 +26,9 @@ export interface LLMProvider {
   // `truncated` is true when the model ran out of output room mid-document.
   pdfToText(base64: string): Promise<{ text: string; truncated: boolean }>;
   generate(args: GenerateArgs): Promise<string>;
+  // Select and rephrase profile content into a job-tailored resume
+  // (structured output, non-streaming).
+  tailorResume(profile: CareerProfile, job: JobContext, signal?: AbortSignal): Promise<TailoredResume>;
 }
 
 export const PDF_TO_TEXT_PROMPT =

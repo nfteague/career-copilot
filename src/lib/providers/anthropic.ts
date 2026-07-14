@@ -1,11 +1,12 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { CareerProfile } from '../types';
-import { PROFILE_EXTRACTION_SCHEMA } from '../profileSchema';
+import { CareerProfile, JobContext, TailoredResume } from '../types';
+import { PROFILE_EXTRACTION_SCHEMA, TAILORED_RESUME_SCHEMA } from '../profileSchema';
 import {
   PROFILE_EXTRACTION_SYSTEM,
   buildMergePreamble,
   buildGenerationSystem,
   buildGenerationUserPrompt,
+  buildResumeTailoringPrompts,
 } from '../prompts';
 import {
   GenerateArgs,
@@ -82,6 +83,27 @@ export class AnthropicProvider implements LLMProvider {
       text: block && block.type === 'text' ? block.text : '',
       truncated: res.stop_reason === 'max_tokens',
     };
+  }
+
+  async tailorResume(
+    profile: CareerProfile,
+    job: JobContext,
+    signal?: AbortSignal,
+  ): Promise<TailoredResume> {
+    const { system, user } = buildResumeTailoringPrompts(profile, job);
+    const res = await this.client.messages.create(
+      {
+        model: this.model,
+        max_tokens: MAX_OUTPUT_TOKENS,
+        system,
+        output_config: { format: { type: 'json_schema', schema: TAILORED_RESUME_SCHEMA } },
+        messages: [{ role: 'user', content: user }],
+      },
+      { signal },
+    );
+    const block = res.content.find((b) => b.type === 'text');
+    if (!block || block.type !== 'text') throw new Error('No structured output returned.');
+    return JSON.parse(block.text) as TailoredResume;
   }
 
   async generate(args: GenerateArgs): Promise<string> {

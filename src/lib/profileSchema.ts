@@ -117,3 +117,78 @@ export const PROFILE_EXTRACTION_SCHEMA = {
     'certifications',
   ],
 } as const;
+
+// Schema for tailorResume — same OpenAI-strict conventions as above (every
+// object additionalProperties: false, all properties required; "absent" is
+// expressed as an empty string or array).
+export const TAILORED_RESUME_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    header: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        name: { type: 'string' },
+        headline: { type: 'string' },
+        location: { type: 'string' },
+        email: { type: 'string' },
+        phone: { type: 'string' },
+        links: { type: 'array', items: { type: 'string' } },
+      },
+      required: ['name', 'headline', 'location', 'email', 'phone', 'links'],
+    },
+    summary: { type: 'string' },
+    experience: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          company: { type: 'string' },
+          title: { type: 'string' },
+          dates: { type: 'string' },
+          bullets: { type: 'array', items: { type: 'string' } },
+        },
+        required: ['company', 'title', 'dates', 'bullets'],
+      },
+    },
+    projects: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          name: { type: 'string' },
+          description: { type: 'string' },
+          bullets: { type: 'array', items: { type: 'string' } },
+        },
+        required: ['name', 'description', 'bullets'],
+      },
+    },
+    education: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          institution: { type: 'string' },
+          degree: { type: 'string' },
+          dates: { type: 'string' },
+        },
+        required: ['institution', 'degree', 'dates'],
+      },
+    },
+    certifications: { type: 'array', items: { type: 'string' } },
+    skills: { type: 'array', items: { type: 'string' } },
+  },
+  required: [
+    'header',
+    'summary',
+    'experience',
+    'projects',
+    'education',
+    'certifications',
+    'skills',
+  ],
+} as const;

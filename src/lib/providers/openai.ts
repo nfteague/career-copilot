@@ -1,11 +1,12 @@
 import OpenAI from 'openai';
-import { CareerProfile } from '../types';
-import { PROFILE_EXTRACTION_SCHEMA } from '../profileSchema';
+import { CareerProfile, JobContext, TailoredResume } from '../types';
+import { PROFILE_EXTRACTION_SCHEMA, TAILORED_RESUME_SCHEMA } from '../profileSchema';
 import {
   PROFILE_EXTRACTION_SYSTEM,
   buildMergePreamble,
   buildGenerationSystem,
   buildGenerationUserPrompt,
+  buildResumeTailoringPrompts,
 } from '../prompts';
 import {
   GenerateArgs,
@@ -92,6 +93,32 @@ export class OpenAIProvider implements LLMProvider {
       text: res.choices[0]?.message?.content ?? '',
       truncated: res.choices[0]?.finish_reason === 'length',
     };
+  }
+
+  async tailorResume(
+    profile: CareerProfile,
+    job: JobContext,
+    signal?: AbortSignal,
+  ): Promise<TailoredResume> {
+    const { system, user } = buildResumeTailoringPrompts(profile, job);
+    const res = await this.client.chat.completions.create(
+      {
+        model: this.model,
+        max_completion_tokens: MAX_OUTPUT_TOKENS,
+        response_format: {
+          type: 'json_schema',
+          json_schema: { name: 'tailored_resume', strict: true, schema: TAILORED_RESUME_SCHEMA },
+        },
+        messages: [
+          { role: 'system', content: system },
+          { role: 'user', content: user },
+        ],
+      },
+      { signal },
+    );
+    const text = res.choices[0]?.message?.content;
+    if (!text) throw new Error('No structured output returned.');
+    return JSON.parse(text) as TailoredResume;
   }
 
   async generate(args: GenerateArgs): Promise<string> {

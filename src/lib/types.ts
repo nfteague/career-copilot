@@ -135,6 +135,26 @@ export interface CareerProfile {
   updatedAt: string; // ISO timestamp
 }
 
+// A job-tailored resume produced by the model — selection and rephrasing over
+// the profile, never invention. Rendered and printed from the dedicated
+// resume page (src/resume/).
+export interface TailoredResume {
+  header: {
+    name: string;
+    headline: string;
+    location: string;
+    email: string;
+    phone: string;
+    links: string[];
+  };
+  summary: string;
+  experience: { company: string; title: string; dates: string; bullets: string[] }[];
+  projects: { name: string; description: string; bullets: string[] }[];
+  education: { institution: string; degree: string; dates: string }[];
+  certifications: string[];
+  skills: string[];
+}
+
 // What the content script extracts from the page the user is on.
 export interface JobContext {
   url: string;

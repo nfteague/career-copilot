@@ -35,6 +35,9 @@ export default function Generator({
   // Result-step reprompt / added-context box.
   const [refine, setRefine] = useState('');
   const [saveRefine, setSaveRefine] = useState(false);
+  // Tailored-resume action (setup step; opens the print page in a new tab).
+  const [resumeBusy, setResumeBusy] = useState(false);
+  const [resumeError, setResumeError] = useState('');
   // Voice settings live here, persisted back to the profile as the default.
   const [prefs, setPrefs] = useState<Preferences>(profile.preferences);
   const abortRef = useRef<AbortController | null>(null);
@@ -169,6 +172,23 @@ export default function Generator({
     runWith(withPrefs(profile));
   }
 
+  // Tailor a resume to this job and open it in the print page. Non-streaming
+  // structured call; the artifact itself isn't stored (regenerating is cheap).
+  async function makeResume() {
+    setResumeBusy(true);
+    setResumeError('');
+    try {
+      const provider = await getProvider(settings);
+      const tailored = await provider.tailorResume(withPrefs(profile), job);
+      await chrome.storage.session.set({ pendingResume: tailored });
+      await chrome.tabs.create({ url: chrome.runtime.getURL('src/resume/index.html') });
+    } catch (e) {
+      setResumeError(friendlyError(e));
+    } finally {
+      setResumeBusy(false);
+    }
+  }
+
   // Save the candidate's answers to the assistant's questions as reusable Q&A
   // pairs (visible under Profile → Questions), then regenerate.
   async function addAnswersAndRegenerate(pairs: { question: string; answer: string }[]) {
@@ -224,6 +244,7 @@ export default function Generator({
     abortRef.current?.abort();
     setBusy(false);
     setNeedsInfo(null);
+    setResumeError('');
     setStep('setup');
   }
 
@@ -321,6 +342,30 @@ export default function Generator({
         >
           {kind === 'cover_letter' ? 'Generate cover letter' : 'Generate answer'}
         </button>
+
+        <button
+          onClick={makeResume}
+          disabled={resumeBusy || !job.jobDescription?.trim()}
+          title={
+            job.jobDescription?.trim()
+              ? 'Select and rephrase your profile into a one-page resume for this job, opened as a printable page'
+              : 'Needs a job description — use “Get Job” or paste one above'
+          }
+          className="flex w-full items-center justify-center gap-2 rounded-md border border-slate-300 px-4 py-2 text-sm font-medium hover:bg-slate-100 disabled:opacity-40"
+        >
+          {resumeBusy && <Spinner />}
+          {resumeBusy ? 'Tailoring resume…' : 'Tailored resume'}
+        </button>
+        {!job.jobDescription?.trim() && (
+          <p className="text-xs text-slate-400">
+            Tailored resume needs a job description — use “Get Job” or paste one.
+          </p>
+        )}
+        {resumeError && (
+          <p role="alert" className="rounded-md bg-red-50 px-3 py-2 text-xs text-red-700">
+            {resumeError}
+          </p>
+        )}
       </div>
     );
   }
