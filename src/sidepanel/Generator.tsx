@@ -273,6 +273,38 @@ export default function Generator({
           onGetJob={getJob}
         />
 
+        {/* Extra vertical padding keeps this apart from the job card above
+            and the kind toggle below — it opens a tab, so no misclicks. */}
+        <div className="space-y-2 py-3">
+          <p className="text-xs text-slate-500">
+            Generate a one-page resume built from your profile and tailored to this job's
+            description and company — then review, tweak, and save it as a PDF.
+          </p>
+          <button
+            onClick={makeResume}
+            disabled={resumeBusy || !job.jobDescription?.trim()}
+            title={
+              job.jobDescription?.trim()
+                ? 'Select and rephrase your profile into a one-page resume for this job, opened as a printable page'
+                : 'Needs a job description — use “Get Job” or paste one above'
+            }
+            className="flex w-full items-center justify-center gap-2 rounded-md border border-slate-300 px-4 py-2 text-sm font-medium hover:bg-slate-100 disabled:opacity-40"
+          >
+            {resumeBusy && <Spinner />}
+            {resumeBusy ? 'Tailoring resume…' : 'Tailored resume'}
+          </button>
+          {!job.jobDescription?.trim() && (
+            <p className="text-xs text-slate-400">
+              Needs a job description — use “Get Job” or paste one above.
+            </p>
+          )}
+          {resumeError && (
+            <p role="alert" className="rounded-md bg-red-50 px-3 py-2 text-xs text-red-700">
+              {resumeError}
+            </p>
+          )}
+        </div>
+
         <div className="flex gap-1 rounded-lg bg-slate-100 p-1 text-xs">
           <button
             onClick={() => setKind('cover_letter')}
@@ -347,30 +379,6 @@ export default function Generator({
         >
           {kind === 'cover_letter' ? 'Generate cover letter' : 'Generate answer'}
         </button>
-
-        <button
-          onClick={makeResume}
-          disabled={resumeBusy || !job.jobDescription?.trim()}
-          title={
-            job.jobDescription?.trim()
-              ? 'Select and rephrase your profile into a one-page resume for this job, opened as a printable page'
-              : 'Needs a job description — use “Get Job” or paste one above'
-          }
-          className="flex w-full items-center justify-center gap-2 rounded-md border border-slate-300 px-4 py-2 text-sm font-medium hover:bg-slate-100 disabled:opacity-40"
-        >
-          {resumeBusy && <Spinner />}
-          {resumeBusy ? 'Tailoring resume…' : 'Tailored resume'}
-        </button>
-        {!job.jobDescription?.trim() && (
-          <p className="text-xs text-slate-400">
-            Tailored resume needs a job description — use “Get Job” or paste one.
-          </p>
-        )}
-        {resumeError && (
-          <p role="alert" className="rounded-md bg-red-50 px-3 py-2 text-xs text-red-700">
-            {resumeError}
-          </p>
-        )}
       </div>
     );
   }
