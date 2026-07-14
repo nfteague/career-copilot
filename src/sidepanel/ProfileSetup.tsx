@@ -10,14 +10,15 @@ import {
   isProfileEmpty,
 } from '../lib/types';
 import {
+  BackupHistory,
   BackupReason,
-  ProfileBackup,
   saveProfile,
   updateProfile,
-  backupProfile,
-  getProfileBackups,
+  getBackupHistory,
   hasProfileBackup,
-  restoreProfileBackup,
+  recordVersion,
+  restoreVersion,
+  setCurrentVersionId,
 } from '../lib/storage';
 import { getProvider } from '../lib/providers';
 import { friendlyError } from '../lib/errors';
@@ -91,10 +92,9 @@ export default function ProfileSetup({
     setNotice('');
     try {
       const next = await fn();
-      // Snapshot the latest stored profile (post-model-call, pre-merge) —
-      // model-driven merges can drop data, and this makes them undoable
-      // without losing edits that landed while the call was in flight.
-      const backedUp = await backupProfile(opts.reason);
+      // Checkpoint unsaved edits (manual or mid-flight) as a version first —
+      // model-driven merges can drop data, and this keeps them undoable.
+      const checkpointed = await recordVersion('edits');
       // The extraction ran against a snapshot of the profile; docs, answers,
       // or narrative context may have been saved elsewhere (Generator, other
       // tabs, another window's panel) while the model call was in flight.
@@ -109,7 +109,9 @@ export default function ProfileSetup({
         ...(owns.narrative ? {} : { narrative: latest.narrative }),
         ...(owns.resume ? {} : { resume: latest.resume }),
       }));
-      if (backedUp) setCanUndo(true);
+      // Record the merged result as the new Current version.
+      const versioned = await recordVersion(opts.reason);
+      if (checkpointed || versioned) setCanUndo(true);
       onChange(merged);
       // Only jump to Review if the user is still where they started — don't
       // yank them (and any in-progress form state) off a tab they moved to.
@@ -124,18 +126,13 @@ export default function ProfileSetup({
   }
 
   async function restoreBackup(id: string) {
-    const hadContent = !isProfileEmpty(profile);
-    const restored = await restoreProfileBackup(id);
+    const restored = await restoreVersion(id);
     if (restored) {
       // A pending brain-dump draft belongs to the profile being swapped out.
       onDumpDraftChange(null);
       onChange(restored);
       setShowBackups(false);
-      setNotice(
-        hadContent
-          ? 'Profile restored — the replaced profile was saved as a new backup.'
-          : 'Profile restored.',
-      );
+      setNotice('Profile restored.');
     }
   }
 
@@ -188,10 +185,13 @@ export default function ProfileSetup({
   }
 
   async function clearAll() {
-    const backedUp = await backupProfile('clear'); // clearing must be undoable
+    // Version the pre-clear state (skipped if blank or already versioned).
+    const versioned = await recordVersion('clear');
     const fresh = emptyProfile();
     await saveProfile(fresh);
-    if (backedUp) setCanUndo(true);
+    // The live profile now matches no version — no Current badge.
+    await setCurrentVersionId(null);
+    if (versioned) setCanUndo(true);
     onChange(fresh);
     setTab('docs');
   }
@@ -230,18 +230,21 @@ export default function ProfileSetup({
       return;
     }
     setError('');
-    // Import REPLACES the profile wholesale; the pre-import backup is the
-    // undo (skipped when the previous profile was empty — nothing to keep).
-    const backedUp = await backupProfile('import');
+    const hadContent = !isProfileEmpty(profile);
+    // Import REPLACES the profile wholesale. Checkpoint unsaved edits first
+    // (a no-op when the previous state is blank or already versioned), then
+    // record the imported profile as the new Current version.
+    await recordVersion('edits');
     await saveProfile(imported);
-    if (backedUp) setCanUndo(true);
+    const versioned = await recordVersion('import');
+    if (versioned) setCanUndo(true);
     // A pending brain-dump draft belongs to the replaced profile — drop it so
     // it can't mask (or later overwrite) the imported narrative.
     onDumpDraftChange(null);
     onChange(imported);
     setNotice(
-      backedUp
-        ? 'Profile imported — the previous profile is available under "Restore a backup."'
+      hadContent
+        ? 'Profile imported — the previous profile is under "Version history."'
         : 'Profile imported.',
     );
   }
@@ -351,10 +354,10 @@ export default function ProfileSetup({
             {canUndo && (
               <button
                 onClick={() => setShowBackups(true)}
-                title="Snapshots taken before every resume upload, brain-dump structuring, import, and clear"
+                title="Versions saved when you import, upload a resume, or structure a brain-dump"
                 className="font-medium text-slate-500 underline hover:text-slate-800"
               >
-                Restore a backup
+                Version history
               </button>
             )}
           </div>
@@ -460,14 +463,15 @@ function ResumeSection({
   );
 }
 
-// ---- Backups -----------------------------------------------------------------
+// ---- Version history ----------------------------------------------------------
 
 const BACKUP_REASON_LABELS: Record<BackupReason, string> = {
-  'resume-upload': 'Before resume upload',
-  'brain-dump': 'Before brain-dump structuring',
-  import: 'Before profile import',
+  'resume-upload': 'Resume upload',
+  'brain-dump': 'Brain-dump',
+  import: 'Profile import',
   clear: 'Before clearing all data',
-  restore: 'Replaced by a restore',
+  edits: 'Manual edits',
+  restore: 'Earlier version', // legacy entries from the pre-history model
   unknown: 'Earlier version',
 };
 
@@ -501,12 +505,12 @@ function BackupsView({
   onRestore: (id: string) => void;
   onBack: () => void;
 }) {
-  const [backups, setBackups] = useState<ProfileBackup[] | null>(null);
+  const [history, setHistory] = useState<BackupHistory | null>(null);
 
-  // Re-fetch when an in-flight ingest finishes so its fresh snapshot appears
+  // Re-fetch when an in-flight ingest finishes so its fresh version appears
   // without leaving and re-entering the view.
   useEffect(() => {
-    if (!busy) getProfileBackups().then(setBackups);
+    if (!busy) getBackupHistory().then(setHistory);
   }, [busy]);
 
   return (
@@ -518,47 +522,58 @@ function BackupsView({
         ← Back to Review
       </button>
       <p className="text-sm text-slate-600">
-        Snapshots taken automatically before anything destructive. Restoring saves your current
-        profile here first, so it's always reversible.
+        A version is saved whenever you import a profile, upload a resume, or structure a
+        brain-dump. Restoring switches back to that version — edits you haven't versioned are
+        saved as "Manual edits" first.
       </p>
-      {backups === null ? (
+      {history === null ? (
         <p role="status" className="text-xs text-slate-500">
           Loading…
         </p>
-      ) : backups.length === 0 ? (
-        <p className="text-xs text-slate-400">No backups yet.</p>
+      ) : history.versions.length === 0 ? (
+        <p className="text-xs text-slate-400">No versions yet.</p>
       ) : (
         <ul className="space-y-2">
-          {backups.map((b) => (
-            <li
-              key={b.id}
-              className="flex items-center justify-between gap-2 rounded-md border border-slate-200 bg-white px-3 py-2"
-            >
-              <span className="min-w-0 text-sm">
-                <span className="block font-medium">
-                  {BACKUP_REASON_LABELS[b.reason] ?? BACKUP_REASON_LABELS.unknown}
-                  {backupWhen(b.savedAt) && (
-                    <span className="ml-1.5 text-xs font-normal text-slate-400">
-                      {backupWhen(b.savedAt)}
-                    </span>
-                  )}
-                </span>
-                <span className="block truncate text-xs text-slate-500">
-                  {backupFingerprint(b.profile)}
-                </span>
-              </span>
-              <button
-                onClick={() => onRestore(b.id)}
-                disabled={busy}
-                aria-label={`Restore backup: ${BACKUP_REASON_LABELS[b.reason] ?? 'earlier version'}${
-                  backupWhen(b.savedAt) ? `, ${backupWhen(b.savedAt)}` : ''
-                }`}
-                className="shrink-0 rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium hover:bg-slate-100 disabled:opacity-40"
+          {history.versions.map((b) => {
+            const isCurrent = b.id === history.currentId;
+            return (
+              <li
+                key={b.id}
+                className="flex items-center justify-between gap-2 rounded-md border border-slate-200 bg-white px-3 py-2"
               >
-                Restore
-              </button>
-            </li>
-          ))}
+                <span className="min-w-0 text-sm">
+                  <span className="block font-medium">
+                    {BACKUP_REASON_LABELS[b.reason] ?? BACKUP_REASON_LABELS.unknown}
+                    {isCurrent && (
+                      <span className="ml-1.5 rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700">
+                        Current
+                      </span>
+                    )}
+                    {backupWhen(b.savedAt) && (
+                      <span className="ml-1.5 text-xs font-normal text-slate-400">
+                        {backupWhen(b.savedAt)}
+                      </span>
+                    )}
+                  </span>
+                  <span className="block truncate text-xs text-slate-500">
+                    {backupFingerprint(b.profile)}
+                  </span>
+                </span>
+                {!isCurrent && (
+                  <button
+                    onClick={() => onRestore(b.id)}
+                    disabled={busy}
+                    aria-label={`Restore version: ${
+                      BACKUP_REASON_LABELS[b.reason] ?? 'earlier version'
+                    }${backupWhen(b.savedAt) ? `, ${backupWhen(b.savedAt)}` : ''}`}
+                    className="shrink-0 rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium hover:bg-slate-100 disabled:opacity-40"
+                  >
+                    Restore
+                  </button>
+                )}
+              </li>
+            );
+          })}
         </ul>
       )}
     </div>

@@ -48,18 +48,23 @@ export async function updateProfile(
   return next;
 }
 
-// Safety net around destructive operations (ingest merges, imports, clear-all):
-// a bounded, newest-first list of snapshots, each stamped with when and why it
-// was taken. Small enough to stay well inside the chrome.storage.local quota.
+// Version history, Google-Docs style: a bounded, newest-first list of profile
+// versions recorded when qualifying actions happen (import, resume upload,
+// brain-dump structuring), plus a pointer to the version the live profile is
+// based on ("Current"). Restoring moves the pointer; it never mints entries —
+// except that unsaved manual edits are checkpointed once before being
+// replaced, which cannot compound (after a restore the live profile equals a
+// version, so the next restore checkpoints nothing).
 const BACKUPS_KEY = 'careerProfileBackups';
-const MAX_BACKUPS = 5;
+const MAX_BACKUPS = 20;
 
 export type BackupReason =
   | 'resume-upload'
   | 'brain-dump'
   | 'import'
   | 'clear'
-  | 'restore'
+  | 'edits'
+  | 'restore' // legacy entries from the pre-history model
   | 'unknown';
 
 export interface ProfileBackup {
@@ -69,80 +74,118 @@ export interface ProfileBackup {
   profile: CareerProfile;
 }
 
-// Read the backup list, folding the legacy single-slot backup in once.
-// Blank snapshots saved by older builds are filtered out on read.
-export async function getProfileBackups(): Promise<ProfileBackup[]> {
-  const stored = await chrome.storage.local.get([BACKUPS_KEY, BACKUP_KEY]);
-  const list = ((stored[BACKUPS_KEY] as ProfileBackup[] | undefined) ?? []).filter(
-    (b) => !isProfileEmpty({ ...emptyProfile(), ...b.profile }),
-  );
-  const legacy = stored[BACKUP_KEY] as CareerProfile | undefined;
-  if (!legacy) return list;
-  // Fold the legacy slot in only when the list has never been written — this
-  // keeps the migration idempotent when two panel windows race through it
-  // (the loser just clears the already-migrated slot).
-  if (stored[BACKUPS_KEY] !== undefined) {
-    await chrome.storage.local.remove(BACKUP_KEY);
-    return list;
-  }
-  const migrated = [
-    ...list,
-    {
-      id: crypto.randomUUID(),
-      savedAt: typeof legacy.updatedAt === 'string' ? legacy.updatedAt : '',
-      reason: 'unknown' as const,
-      profile: { ...emptyProfile(), ...legacy },
-    },
-  ].slice(0, MAX_BACKUPS);
-  await chrome.storage.local.set({ [BACKUPS_KEY]: migrated });
-  await chrome.storage.local.remove(BACKUP_KEY);
-  return migrated;
+export interface BackupHistory {
+  versions: ProfileBackup[]; // newest first
+  currentId: string | null; // the version the live profile is based on
 }
 
-// Returns whether a snapshot was actually taken — a backup of an empty
-// profile helps no one, so blanks are skipped.
-export async function backupProfile(reason: BackupReason): Promise<boolean> {
-  const current = await getProfile();
-  if (isProfileEmpty(current)) return false;
-  const backups = await getProfileBackups();
+const normalizeStored = (p: CareerProfile): CareerProfile => ({ ...emptyProfile(), ...p });
+// Content equality, ignoring the save timestamp.
+const sameProfile = (a: CareerProfile, b: CareerProfile): boolean =>
+  JSON.stringify({ ...a, updatedAt: '' }) === JSON.stringify({ ...b, updatedAt: '' });
+
+// Read + normalize the history. Older builds stored a bare array (no Current
+// pointer) or a single snapshot slot; blank snapshots are filtered out.
+export async function getBackupHistory(): Promise<BackupHistory> {
+  const stored = await chrome.storage.local.get([BACKUPS_KEY, BACKUP_KEY]);
+  const raw = stored[BACKUPS_KEY] as BackupHistory | ProfileBackup[] | undefined;
+  const history: BackupHistory = Array.isArray(raw)
+    ? { versions: raw, currentId: null }
+    : (raw ?? { versions: [], currentId: null });
+  history.versions = history.versions.filter(
+    (b) => !isProfileEmpty(normalizeStored(b.profile)),
+  );
+
+  const legacy = stored[BACKUP_KEY] as CareerProfile | undefined;
+  if (legacy) {
+    // Fold the legacy slot in only when the history has never been written —
+    // idempotent when two panel windows race (the loser just clears the slot).
+    if (stored[BACKUPS_KEY] === undefined) {
+      const entry: ProfileBackup = {
+        id: crypto.randomUUID(),
+        savedAt: typeof legacy.updatedAt === 'string' ? legacy.updatedAt : '',
+        reason: 'unknown',
+        profile: normalizeStored(legacy),
+      };
+      history.versions = [...history.versions, entry]
+        .filter((b) => !isProfileEmpty(normalizeStored(b.profile)))
+        .slice(0, MAX_BACKUPS);
+      await chrome.storage.local.set({ [BACKUPS_KEY]: history });
+    }
+    await chrome.storage.local.remove(BACKUP_KEY);
+  }
+  return history;
+}
+
+export async function hasProfileBackup(): Promise<boolean> {
+  return (await getBackupHistory()).versions.length > 0;
+}
+
+// Record the live profile as the newest version and point Current at it.
+// Skips blanks and exact duplicates of the current version, so re-running an
+// action that changed nothing (or checkpointing un-drifted state) is a no-op.
+export async function recordVersion(reason: BackupReason): Promise<boolean> {
+  const live = await getProfile();
+  if (isProfileEmpty(live)) return false;
+  const history = await getBackupHistory();
+  const current = history.versions.find((v) => v.id === history.currentId);
+  if (current && sameProfile(normalizeStored(current.profile), live)) return false;
   const entry: ProfileBackup = {
     id: crypto.randomUUID(),
     savedAt: new Date().toISOString(),
     reason,
-    profile: current,
+    profile: live,
   };
-  await chrome.storage.local.set({ [BACKUPS_KEY]: [entry, ...backups].slice(0, MAX_BACKUPS) });
+  await chrome.storage.local.set({
+    [BACKUPS_KEY]: {
+      versions: [entry, ...history.versions].slice(0, MAX_BACKUPS),
+      currentId: entry.id,
+    } satisfies BackupHistory,
+  });
   return true;
 }
 
-export async function hasProfileBackup(): Promise<boolean> {
-  return (await getProfileBackups()).length > 0;
+// Point Current somewhere else (null = the live profile matches no version,
+// e.g. right after clearing all data).
+export async function setCurrentVersionId(id: string | null): Promise<void> {
+  const history = await getBackupHistory();
+  await chrome.storage.local.set({ [BACKUPS_KEY]: { ...history, currentId: id } });
 }
 
-// Apply the selected backup. Non-destructive: the current profile is pushed
-// onto the list first (reason 'restore'), so any restore is itself undoable
-// from the same view.
-export async function restoreProfileBackup(id: string): Promise<CareerProfile | null> {
-  const backups = await getProfileBackups();
-  const target = backups.find((b) => b.id === id);
+// Apply the selected version and move Current to it. Unsaved manual edits are
+// checkpointed once (reason 'edits') before being replaced.
+export async function restoreVersion(id: string): Promise<CareerProfile | null> {
+  const history = await getBackupHistory();
+  const target = history.versions.find((v) => v.id === id);
   if (!target) return null;
-  const current = await getProfile();
-  // Same rule as backupProfile: don't save a snapshot of nothing.
-  const withCurrent = isProfileEmpty(current)
-    ? backups
-    : [
-        {
-          id: crypto.randomUUID(),
-          savedAt: new Date().toISOString(),
-          reason: 'restore' as const,
-          profile: current,
-        },
-        ...backups,
-      ];
-  const restored = { ...emptyProfile(), ...target.profile };
+
+  const live = await getProfile();
+  const current = history.versions.find((v) => v.id === history.currentId);
+  let versions = history.versions;
+  // Checkpoint drift — unless the live profile already matches the current
+  // version, or the target itself (no pointer yet on migrated histories).
+  if (
+    !isProfileEmpty(live) &&
+    !(current && sameProfile(normalizeStored(current.profile), live)) &&
+    !sameProfile(normalizeStored(target.profile), live)
+  ) {
+    versions = [
+      {
+        id: crypto.randomUUID(),
+        savedAt: new Date().toISOString(),
+        reason: 'edits' as const,
+        profile: live,
+      },
+      ...versions,
+    ].slice(0, MAX_BACKUPS);
+    // The cap must never evict the version being restored.
+    if (!versions.some((v) => v.id === id)) versions[versions.length - 1] = target;
+  }
+
+  const restored = normalizeStored(target.profile);
   await chrome.storage.local.set({
     [PROFILE_KEY]: restored,
-    [BACKUPS_KEY]: withCurrent.slice(0, MAX_BACKUPS),
+    [BACKUPS_KEY]: { versions, currentId: id } satisfies BackupHistory,
   });
   return restored;
 }

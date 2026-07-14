@@ -25,10 +25,11 @@ const {
   getProfile,
   saveProfile,
   updateProfile,
-  backupProfile,
-  getProfileBackups,
+  getBackupHistory,
   hasProfileBackup,
-  restoreProfileBackup,
+  recordVersion,
+  restoreVersion,
+  setCurrentVersionId,
   getSettings,
 } = await import('./storage');
 const { emptyProfile } = await import('./types');
@@ -67,89 +68,146 @@ describe('updateProfile', () => {
   });
 });
 
-describe('backup / restore', () => {
-  it('stamps snapshots with a reason and restores by id, reversibly', async () => {
-    const before = emptyProfile();
-    before.narrative = 'BEFORE';
-    await saveProfile(before);
-    await backupProfile('import');
-    await updateProfile((p) => ({ ...p, narrative: 'AFTER-BAD-MERGE' }));
+describe('version history', () => {
+  async function importProfileNamed(name: string) {
+    const p = emptyProfile();
+    p.basics.name = name;
+    await saveProfile(p);
+    await recordVersion('import');
+  }
 
-    const backups = await getProfileBackups();
-    expect(backups).toHaveLength(1);
-    expect(backups[0].reason).toBe('import');
-    expect(backups[0].savedAt).toBeTruthy();
-    expect(await hasProfileBackup()).toBe(true);
+  it('two imports → two versions with Current on the latest; restore moves the badge', async () => {
+    await importProfileNamed('Profile A');
+    await importProfileNamed('Profile B');
 
-    const restored = await restoreProfileBackup(backups[0].id);
-    expect(restored?.narrative).toBe('BEFORE');
-    expect((await getProfile()).narrative).toBe('BEFORE');
+    let h = await getBackupHistory();
+    expect(h.versions).toHaveLength(2);
+    expect(h.versions[0].profile.basics.name).toBe('Profile B');
+    expect(h.currentId).toBe(h.versions[0].id); // Current on the latest
 
-    // The replaced profile was pushed as a new 'restore' backup — restoring
-    // it undoes the restore.
-    const after = await getProfileBackups();
-    expect(after[0].reason).toBe('restore');
-    const undone = await restoreProfileBackup(after[0].id);
-    expect(undone?.narrative).toBe('AFTER-BAD-MERGE');
+    // Restoring A moves the badge to A without minting new entries.
+    const idA = h.versions[1].id;
+    const restored = await restoreVersion(idA);
+    expect(restored?.basics.name).toBe('Profile A');
+    expect((await getProfile()).basics.name).toBe('Profile A');
+    h = await getBackupHistory();
+    expect(h.versions).toHaveLength(2);
+    expect(h.currentId).toBe(idA);
   });
 
-  it('keeps at most 5 backups, newest first', async () => {
-    for (let i = 0; i < 7; i++) {
+  it('checkpoints unsaved manual edits once before a restore replaces them', async () => {
+    await importProfileNamed('Profile A');
+    await importProfileNamed('Profile B');
+    // Manual drift after the last version.
+    await updateProfile((p) => ({ ...p, narrative: 'hand-written edits' }));
+
+    let h = await getBackupHistory();
+    const idA = h.versions[1].id;
+    await restoreVersion(idA);
+
+    h = await getBackupHistory();
+    expect(h.versions).toHaveLength(3);
+    expect(h.versions[0].reason).toBe('edits');
+    expect(h.versions[0].profile.narrative).toBe('hand-written edits');
+    expect(h.currentId).toBe(idA);
+
+    // Restoring again checkpoints nothing — live equals a version now.
+    const idB = h.versions.find((v) => v.profile.basics.name === 'Profile B')!.id;
+    await restoreVersion(idB);
+    expect((await getBackupHistory()).versions).toHaveLength(3);
+  });
+
+  it('skips blanks and exact duplicates of the current version', async () => {
+    expect(await recordVersion('import')).toBe(false); // blank profile
+    await importProfileNamed('Profile A');
+    expect(await recordVersion('brain-dump')).toBe(false); // unchanged content
+    expect((await getBackupHistory()).versions).toHaveLength(1);
+  });
+
+  it('caps the history at 20, newest first', async () => {
+    for (let i = 0; i < 23; i++) {
       await updateProfile((p) => ({ ...p, narrative: `v${i}` }));
-      await backupProfile('brain-dump');
+      await recordVersion('brain-dump');
     }
-    const backups = await getProfileBackups();
-    expect(backups).toHaveLength(5);
-    expect(backups[0].profile.narrative).toBe('v6');
-    expect(backups[4].profile.narrative).toBe('v2');
+    const h = await getBackupHistory();
+    expect(h.versions).toHaveLength(20);
+    expect(h.versions[0].profile.narrative).toBe('v22');
+    expect(h.versions[19].profile.narrative).toBe('v3');
+    expect(h.currentId).toBe(h.versions[0].id);
   });
 
-  it('migrates the legacy single-slot backup into the list once', async () => {
+  it('never evicts the version being restored when the checkpoint hits the cap', async () => {
+    for (let i = 0; i < 20; i++) {
+      await updateProfile((p) => ({ ...p, narrative: `v${i}` }));
+      await recordVersion('brain-dump');
+    }
+    const h = await getBackupHistory();
+    const oldest = h.versions[19];
+    await updateProfile((p) => ({ ...p, narrative: 'drift' })); // forces a checkpoint
+    const restored = await restoreVersion(oldest.id);
+    expect(restored?.narrative).toBe('v0');
+    const after = await getBackupHistory();
+    expect(after.versions).toHaveLength(20);
+    expect(after.versions.some((v) => v.id === oldest.id)).toBe(true);
+    expect(after.currentId).toBe(oldest.id);
+  });
+
+  it('setCurrentVersionId(null) removes the Current pointer (clear-all)', async () => {
+    await importProfileNamed('Profile A');
+    await setCurrentVersionId(null);
+    const h = await getBackupHistory();
+    expect(h.versions).toHaveLength(1);
+    expect(h.currentId).toBeNull();
+  });
+
+  it('normalizes the pre-history bare-array shape and filters blank snapshots', async () => {
+    const blank = { id: 'b1', savedAt: 'x', reason: 'import', profile: emptyProfile() };
+    const real = emptyProfile();
+    real.narrative = 'REAL';
+    store.set('careerProfileBackups', [
+      blank,
+      { id: 'b2', savedAt: 'y', reason: 'import', profile: real },
+    ]);
+    const h = await getBackupHistory();
+    expect(h.versions).toHaveLength(1);
+    expect(h.versions[0].id).toBe('b2');
+    expect(h.currentId).toBeNull();
+  });
+
+  it('migrates the legacy single-slot backup once, idempotently', async () => {
     const legacy = emptyProfile();
     legacy.narrative = 'LEGACY';
     store.set('careerProfileBackup', legacy);
 
-    const backups = await getProfileBackups();
-    expect(backups).toHaveLength(1);
-    expect(backups[0].reason).toBe('unknown');
-    expect(backups[0].profile.narrative).toBe('LEGACY');
+    let h = await getBackupHistory();
+    expect(h.versions).toHaveLength(1);
+    expect(h.versions[0].reason).toBe('unknown');
     expect(store.has('careerProfileBackup')).toBe(false);
     expect(await hasProfileBackup()).toBe(true);
-  });
 
-  it('returns null for an unknown id and when there are no backups', async () => {
-    expect(await restoreProfileBackup('nope')).toBeNull();
-  });
-
-  it('does not re-migrate the legacy slot once the list exists (racing reader)', async () => {
-    await updateProfile((p) => ({ ...p, narrative: 'real content' }));
-    await backupProfile('import'); // the list now exists
-    const legacy = emptyProfile();
-    legacy.narrative = 'LEGACY-LEFTOVER';
-    store.set('careerProfileBackup', legacy); // simulates a racing reader's view
-
-    const backups = await getProfileBackups();
-    expect(backups).toHaveLength(1); // leftover cleared, not folded in again
-    expect(backups[0].reason).toBe('import');
+    // A racing reader's leftover slot is cleared, not folded in again.
+    store.set('careerProfileBackup', legacy);
+    h = await getBackupHistory();
+    expect(h.versions).toHaveLength(1);
     expect(store.has('careerProfileBackup')).toBe(false);
   });
 
-  it('skips backups of an empty profile — a snapshot of nothing helps no one', async () => {
-    expect(await backupProfile('import')).toBe(false);
-    expect(await getProfileBackups()).toHaveLength(0);
-    expect(await hasProfileBackup()).toBe(false);
+  it('returns null for an unknown id', async () => {
+    expect(await restoreVersion('nope')).toBeNull();
+  });
 
-    // ...and restore does not push an empty current profile onto the list.
-    await updateProfile((p) => ({ ...p, narrative: 'CONTENT' }));
-    expect(await backupProfile('clear')).toBe(true);
-    await saveProfile(emptyProfile()); // the "clear" happened
-    const backups = await getProfileBackups();
-    await restoreProfileBackup(backups[0].id);
-    expect((await getProfile()).narrative).toBe('CONTENT');
-    // Only the original snapshot remains; no 'restore' entry for the blank.
-    const after = await getProfileBackups();
-    expect(after).toHaveLength(1);
-    expect(after[0].reason).toBe('clear');
+  it('does not checkpoint when live already equals the restore target (migrated history, no pointer)', async () => {
+    const real = emptyProfile();
+    real.narrative = 'SAME';
+    await saveProfile(real);
+    // Pre-history array shape: content matches live but currentId is null.
+    store.set('careerProfileBackups', [
+      { id: 'b1', savedAt: 'x', reason: 'import', profile: real },
+    ]);
+    await restoreVersion('b1');
+    const h = await getBackupHistory();
+    expect(h.versions).toHaveLength(1); // no duplicate "Manual edits" row
+    expect(h.currentId).toBe('b1');
   });
 });
 
