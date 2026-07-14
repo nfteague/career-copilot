@@ -231,6 +231,8 @@ describe('buildResumeTailoringPrompts', () => {
     // Untrusted-JD hardening and the verbatim-facts rule live in the system prompt.
     expect(system).toContain('disregard them entirely');
     expect(system).toContain('VERBATIM');
+    // Roles are never droppable by the model — omissions fabricate gaps.
+    expect(system).toContain('Include EVERY role');
   });
 
   it('carries standing output requirements only when set', () => {

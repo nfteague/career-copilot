@@ -136,59 +136,58 @@ export default function ResumePanel({
         <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Sections</h3>
         {(Object.keys(SECTION_LABELS) as ResumeSectionKey[])
           .filter(sectionPresent)
-          .map((key) => (
-            <label key={key} className="flex items-center gap-2 text-sm text-slate-700">
-              <input
-                type="checkbox"
-                checked={!hidden.sections.includes(key)}
-                onChange={() =>
-                  withHidden({
-                    sections: hidden.sections.includes(key)
-                      ? hidden.sections.filter((s) => s !== key)
-                      : [...hidden.sections, key],
-                  })
-                }
-              />
-              {SECTION_LABELS[key]}
-            </label>
-          ))}
+          .map((key) => {
+            const sectionOn = !hidden.sections.includes(key);
+            return (
+              <div key={key} className="space-y-1">
+                <label className="flex items-center gap-2 text-sm text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={sectionOn}
+                    onChange={() =>
+                      withHidden({
+                        sections: sectionOn
+                          ? [...hidden.sections, key]
+                          : hidden.sections.filter((s) => s !== key),
+                      })
+                    }
+                  />
+                  {SECTION_LABELS[key]}
+                </label>
+                {key === 'experience' && sectionOn && (
+                  <div className="ml-6 space-y-1">
+                    {resume.experience.map((e, i) => (
+                      <label key={i} className="flex items-center gap-2 text-sm text-slate-600">
+                        <input
+                          type="checkbox"
+                          checked={!hidden.experience.includes(i)}
+                          onChange={() => withHidden({ experience: toggle(hidden.experience, i) })}
+                        />
+                        <span className="min-w-0 truncate">
+                          {e.title} — {e.company}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+                {key === 'projects' && sectionOn && (
+                  <div className="ml-6 space-y-1">
+                    {resume.projects.map((p, i) => (
+                      <label key={i} className="flex items-center gap-2 text-sm text-slate-600">
+                        <input
+                          type="checkbox"
+                          checked={!hidden.projects.includes(i)}
+                          onChange={() => withHidden({ projects: toggle(hidden.projects, i) })}
+                        />
+                        <span className="min-w-0 truncate">{p.name}</span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
       </section>
-
-      {resume.experience.length > 0 && !hidden.sections.includes('experience') && (
-        <section className="space-y-1.5">
-          <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Roles</h3>
-          {resume.experience.map((e, i) => (
-            <label key={i} className="flex items-center gap-2 text-sm text-slate-700">
-              <input
-                type="checkbox"
-                checked={!hidden.experience.includes(i)}
-                onChange={() => withHidden({ experience: toggle(hidden.experience, i) })}
-              />
-              <span className="min-w-0 truncate">
-                {e.title} — {e.company}
-              </span>
-            </label>
-          ))}
-        </section>
-      )}
-
-      {resume.projects.length > 0 && !hidden.sections.includes('projects') && (
-        <section className="space-y-1.5">
-          <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-            Projects
-          </h3>
-          {resume.projects.map((p, i) => (
-            <label key={i} className="flex items-center gap-2 text-sm text-slate-700">
-              <input
-                type="checkbox"
-                checked={!hidden.projects.includes(i)}
-                onChange={() => withHidden({ projects: toggle(hidden.projects, i) })}
-              />
-              <span className="min-w-0 truncate">{p.name}</span>
-            </label>
-          ))}
-        </section>
-      )}
 
       <section className="space-y-2">
         <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
