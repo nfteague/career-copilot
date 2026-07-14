@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { CareerProfile, JobContext, Settings, GenerationKind, Preferences, Note } from '../lib/types';
+import { CareerProfile, JobContext, Settings, GenerationKind, Preferences } from '../lib/types';
 import { getProvider } from '../lib/providers';
 import { updateProfile } from '../lib/storage';
 import { NEEDS_INFO_MARKER, NeedsInfo, parseNeedsInfo } from '../lib/prompts';
@@ -8,12 +8,6 @@ import { getActiveJobContext, hasPageAccess, requestPageAccess } from './tabCont
 import PreferencesEditor from './PreferencesEditor';
 
 const EMPTY_JOB: JobContext = { url: '', source: '', questions: [] };
-
-const note = (content: string): Note => ({
-  id: crypto.randomUUID(),
-  content,
-  addedAt: new Date().toISOString(),
-});
 
 export default function Generator({
   profile,
@@ -45,9 +39,24 @@ export default function Generator({
   const [prefs, setPrefs] = useState<Preferences>(profile.preferences);
   const abortRef = useRef<AbortController | null>(null);
 
+  // Generator only owns tone/length — always merge over the latest stored
+  // preferences so a snapshot can't wipe customInstructions set in Settings.
+  const ownedPrefs = (base: Preferences): Preferences => ({
+    ...base,
+    tone: prefs.tone,
+    length: prefs.length,
+  });
+  const withPrefs = (p: CareerProfile): CareerProfile => ({
+    ...p,
+    preferences: ownedPrefs(p.preferences),
+  });
+
   async function updatePrefs(next: Preferences) {
     setPrefs(next);
-    await updateProfile((p) => ({ ...p, preferences: next }));
+    await updateProfile((p) => ({
+      ...p,
+      preferences: { ...p.preferences, tone: next.tone, length: next.length },
+    }));
   }
 
   async function refreshJob() {
@@ -157,38 +166,48 @@ export default function Generator({
     setRefine('');
     setSaveRefine(false);
     setStep('result');
-    runWith({ ...profile, preferences: prefs });
+    runWith(withPrefs(profile));
   }
 
-  // Save the candidate's answers as reusable notes, then regenerate.
-  async function addNotesAndRegenerate(contents: string[]) {
+  // Save the candidate's answers to the assistant's questions as reusable Q&A
+  // pairs (visible under Profile → Questions), then regenerate.
+  async function addAnswersAndRegenerate(pairs: { question: string; answer: string }[]) {
     const next = await updateProfile((p) => ({
       ...p,
-      preferences: prefs,
-      notes: [...p.notes, ...contents.map(note)],
+      preferences: ownedPrefs(p.preferences),
+      qa: [
+        ...p.qa,
+        ...pairs.map((x) => ({
+          id: crypto.randomUUID(),
+          question: x.question,
+          answer: x.answer,
+          addedAt: new Date().toISOString(),
+        })),
+      ],
     }));
     runWith(next);
   }
 
   function submitAnswers() {
     if (!needsInfo) return;
-    const composed = needsInfo.questions
-      .map((q, i) => (answers[i]?.trim() ? `${q} — ${answers[i].trim()}` : null))
-      .filter((x): x is string => x !== null);
-    if (!composed.length) return;
+    const pairs = needsInfo.questions
+      .map((q, i) => (answers[i]?.trim() ? { question: q, answer: answers[i].trim() } : null))
+      .filter((x): x is { question: string; answer: string } => x !== null);
+    if (!pairs.length) return;
     setNeedsInfo(null);
     setAnswers({});
-    addNotesAndRegenerate(composed);
+    addAnswersAndRegenerate(pairs);
   }
 
   async function regenerate() {
     const text = refine.trim();
-    let p: CareerProfile = { ...profile, preferences: prefs };
+    let p: CareerProfile = withPrefs(profile);
     if (text && saveRefine) {
+      // Saved context lives in the brain-dump narrative (Profile → Brain-dump).
       p = await updateProfile((latest) => ({
         ...latest,
-        preferences: prefs,
-        notes: [...latest.notes, note(text)],
+        preferences: ownedPrefs(latest.preferences),
+        narrative: latest.narrative.trim() ? `${latest.narrative.trimEnd()}\n\n${text}` : text,
       }));
       setRefine('');
       setSaveRefine(false);
@@ -347,6 +366,9 @@ export default function Generator({
               A few details would make this much stronger
             </p>
             {needsInfo.reason && <p className="mt-0.5 text-xs text-amber-800">{needsInfo.reason}</p>}
+            <p className="mt-0.5 text-xs text-amber-800">
+              Your answers are saved under Profile → Questions and reused on future drafts.
+            </p>
           </div>
           {needsInfo.questions.map((q, i) => (
             <label key={i} className="block">
@@ -368,7 +390,7 @@ export default function Generator({
               Answer &amp; generate
             </button>
             <button
-              onClick={() => runWith({ ...profile, preferences: prefs }, true)}
+              onClick={() => runWith(withPrefs(profile), true)}
               disabled={busy}
               className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium hover:bg-slate-100 disabled:opacity-40"
             >
@@ -415,7 +437,7 @@ export default function Generator({
               checked={saveRefine}
               onChange={(e) => setSaveRefine(e.target.checked)}
             />
-            Also save this context to my profile for future drafts
+            Also save this context to my brain-dump for future drafts
           </label>
           <button
             onClick={regenerate}

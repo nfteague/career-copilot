@@ -101,7 +101,7 @@ export class OpenAIProvider implements LLMProvider {
         max_completion_tokens: MAX_OUTPUT_TOKENS,
         stream: true,
         messages: [
-          { role: 'system', content: buildGenerationSystem(args.kind, args.profile.preferences) },
+          { role: 'system', content: buildGenerationSystem(args.kind, args.profile) },
           {
             role: 'user',
             content: buildGenerationUserPrompt(args.kind, args.profile, args.job, args.instruction),

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { CareerProfile, Settings, activeCreds } from '../lib/types';
-import { getProfile, getSettings, onProfileChange } from '../lib/storage';
+import { getProfile, getSettings, onProfileChange, updateProfile } from '../lib/storage';
 import SettingsView from './Settings';
 import ProfileSetup from './ProfileSetup';
 import Generator from './Generator';
@@ -12,11 +12,30 @@ export default function App() {
   const [settings, setSettings] = useState<Settings | null>(null);
   const [profile, setProfile] = useState<CareerProfile | null>(null);
   const [view, setView] = useState<View>('generate');
+  // Profile-view work state lives up here so it survives view switches: an
+  // in-flight ingest keeps its busy flag (preventing a second concurrent
+  // model call after remount) and unsaved brain-dump text isn't discarded.
+  const [profileBusy, setProfileBusy] = useState(false);
+  const [docBusy, setDocBusy] = useState(false);
+  const [dumpDraft, setDumpDraft] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
       setSettings(await getSettings());
-      setProfile(await getProfile());
+      let p = await getProfile();
+      // One-time migration: the standalone notes list was retired in 0.2.0 —
+      // fold any stored notes into the brain-dump narrative so nothing is lost
+      // and everything stays visible/editable under Profile → Brain-dump.
+      if (p.notes.length) {
+        p = await updateProfile((latest) => ({
+          ...latest,
+          narrative: [latest.narrative.trim(), ...latest.notes.map((n) => n.content)]
+            .filter(Boolean)
+            .join('\n\n'),
+          notes: [],
+        }));
+      }
+      setProfile(p);
     })();
     return onProfileChange(setProfile);
   }, []);
@@ -37,7 +56,19 @@ export default function App() {
   } else if (view === 'quickcopy') {
     body = <QuickCopyView />;
   } else if (view === 'profile' || needsProfile) {
-    body = <ProfileSetup profile={profile} settings={settings} onChange={setProfile} />;
+    body = (
+      <ProfileSetup
+        profile={profile}
+        settings={settings}
+        onChange={setProfile}
+        busy={profileBusy}
+        onBusyChange={setProfileBusy}
+        docBusy={docBusy}
+        onDocBusyChange={setDocBusy}
+        dumpDraft={dumpDraft}
+        onDumpDraftChange={setDumpDraft}
+      />
+    );
   } else {
     body = <Generator profile={profile} settings={settings} />;
   }

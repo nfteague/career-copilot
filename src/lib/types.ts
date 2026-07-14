@@ -51,16 +51,47 @@ export interface Certification {
 // Extra material the candidate attaches with their own label — writing samples,
 // case studies, past cover letters, performance reviews. Stored as text and
 // fed into the generation context, but not parsed into the structured fields.
+export type DocCategory = 'cover_letter' | 'writing_sample' | 'other';
+
 export interface SupportingDoc {
   id: string;
   label: string;
   content: string;
   addedAt: string;
+  // Groups the doc in the Documents tab. Cover letters and writing samples are
+  // also voice samples whose style generation mirrors. undefined === 'other'
+  // (docs stored before this field existed).
+  category?: DocCategory;
+  // Deprecated pre-0.2.0 voice flag, superseded by category — read only via
+  // docCategory().
+  kind?: 'context' | 'voice';
 }
 
-// Context the candidate provided in response to the assistant's questions (or a
-// "stronger example" they volunteered). Accumulated over time and fed into every
-// future draft, so the system gets better rather than re-asking.
+// Effective category, mapping docs stored before `category` existed.
+export function docCategory(d: SupportingDoc): DocCategory {
+  return d.category ?? (d.kind === 'voice' ? 'writing_sample' : 'other');
+}
+
+// An application question the candidate has answered before, in their own
+// words — reusable grounded material for future drafts.
+export interface QAPair {
+  id: string;
+  question: string;
+  answer: string;
+  addedAt: string;
+}
+
+// Record of the resume last read into the structured profile. The file itself
+// isn't kept — extraction is one-way into the structured fields.
+export interface ResumeMeta {
+  filename: string;
+  uploadedAt: string;
+}
+
+// Deprecated (0.2.0): the standalone notes list was retired. Answers to the
+// assistant's questions are QAPairs now; volunteered context goes to the
+// narrative. Stored notes are folded into the narrative on load (App.tsx);
+// the field remains for stored-data compatibility.
 export interface Note {
   id: string;
   content: string;
@@ -80,6 +111,9 @@ export interface Basics {
 export interface Preferences {
   tone: 'professional' | 'warm' | 'direct' | 'enthusiastic';
   length: 'concise' | 'standard' | 'detailed';
+  // Standing output requirements the user sets in Settings ("Always …",
+  // "Never …"), applied to every draft on top of tone and length.
+  customInstructions?: string;
 }
 
 export interface CareerProfile {
@@ -91,6 +125,8 @@ export interface CareerProfile {
   certifications: Certification[];
   supportingDocs: SupportingDoc[];
   notes: Note[];
+  qa: QAPair[];
+  resume?: ResumeMeta;
   // Freeform brain-dump: things resumes omit (motivations, context behind
   // moves, soft wins, what the person actually cares about). Fed to the model
   // verbatim alongside the structured data.
@@ -152,6 +188,7 @@ export function emptyProfile(): CareerProfile {
     certifications: [],
     supportingDocs: [],
     notes: [],
+    qa: [],
     narrative: '',
     preferences: { ...DEFAULT_PREFERENCES },
     updatedAt: new Date().toISOString(),

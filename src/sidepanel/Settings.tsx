@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Settings, Provider, activeCreds } from '../lib/types';
-import { saveSettings } from '../lib/storage';
+import { getProfile, saveSettings, updateProfile } from '../lib/storage';
 import { checkCredentials } from '../lib/providers';
 
 const MODELS: Record<Provider, { value: string; label: string }[]> = {
@@ -40,6 +40,43 @@ export default function SettingsView({
   const [saved, setSaved] = useState(false);
   const [checking, setChecking] = useState(false);
   const [keyWarning, setKeyWarning] = useState('');
+  // Standing output requirements live on the profile's preferences (they
+  // export/import with it) but are edited here alongside the model choice.
+  // They auto-save (debounced) — the Save button below is for credentials,
+  // whose save doubles as a key check.
+  const [outputRules, setOutputRules] = useState('');
+  const [rulesSaved, setRulesSaved] = useState(false);
+  const rulesTimer = useRef<number | undefined>(undefined);
+  const pendingRules = useRef<string | null>(null);
+
+  async function persistRules(value: string) {
+    pendingRules.current = null;
+    await updateProfile((p) => ({
+      ...p,
+      preferences: { ...p.preferences, customInstructions: value.trim() || undefined },
+    }));
+  }
+
+  function onRulesChange(value: string) {
+    setOutputRules(value);
+    setRulesSaved(false);
+    pendingRules.current = value;
+    window.clearTimeout(rulesTimer.current);
+    rulesTimer.current = window.setTimeout(async () => {
+      rulesTimer.current = undefined;
+      await persistRules(value);
+      setRulesSaved(true);
+    }, 500);
+  }
+
+  useEffect(() => {
+    getProfile().then((p) => setOutputRules(p.preferences.customInstructions ?? ''));
+    return () => {
+      // Flush a pending debounce so switching views can't drop typed rules.
+      window.clearTimeout(rulesTimer.current);
+      if (pendingRules.current !== null) void persistRules(pendingRules.current);
+    };
+  }, []);
 
   const provider = s.provider;
   const creds = s[provider];
@@ -125,6 +162,21 @@ export default function SettingsView({
             </option>
           ))}
         </select>
+      </label>
+
+      <label className="block">
+        <span className="text-sm font-medium">Output requirements</span>
+        <textarea
+          value={outputRules}
+          onChange={(e) => onRulesChange(e.target.value)}
+          rows={3}
+          placeholder={'e.g. "Never use em dashes." "Always mention I\'m open to relocation."'}
+          className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+        />
+        <span className="mt-1 flex items-center justify-between text-xs text-slate-500">
+          <span>Rules every draft must follow — applied on top of tone and length.</span>
+          {rulesSaved && <span role="status">Saved ✓</span>}
+        </span>
       </label>
 
       <button

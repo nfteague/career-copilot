@@ -5,7 +5,6 @@ import {
   ProjectEntry,
   EducationEntry,
   Certification,
-  Note,
 } from '../lib/types';
 
 // Full edit/delete surface for the structured profile. Edits persist
@@ -144,30 +143,6 @@ export default function ProfileEditor({
           </Card>
         ))}
       </section>
-
-      {/* Notes / collected context */}
-      <section className="space-y-2">
-        <h3 className="text-sm font-semibold">Notes &amp; collected context</h3>
-        <p className="text-xs text-slate-500">
-          Answers you've given the assistant and extra context you've added — used on every draft.
-          Edit or prune anytime.
-        </p>
-        <NotesEditor notes={profile.notes} onChange={(xs) => onUpdate({ notes: xs })} />
-      </section>
-
-      {/* Narrative */}
-      <label className="block">
-        <span className="text-sm font-semibold">Your own words</span>
-        <span className="mt-0.5 block text-xs text-slate-500">
-          Motivations, context behind moves, what you care about — things resumes omit. Used on every draft.
-        </span>
-        <textarea
-          value={profile.narrative}
-          onChange={(e) => onUpdate({ narrative: e.target.value })}
-          rows={5}
-          className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-        />
-      </label>
 
       <div className="border-t border-slate-200 pt-4">
         <ClearAll onClear={onClear} />
@@ -356,53 +331,6 @@ function SkillChips({ skills, onChange }: { skills: string[]; onChange: (xs: str
           Add
         </button>
       </div>
-    </div>
-  );
-}
-
-function NotesEditor({ notes, onChange }: { notes: Note[]; onChange: (xs: Note[]) => void }) {
-  const [text, setText] = useState('');
-  const add = () => {
-    const v = text.trim();
-    if (!v) return;
-    onChange([...notes, { id: crypto.randomUUID(), content: v, addedAt: new Date().toISOString() }]);
-    setText('');
-  };
-  return (
-    <div className="space-y-2">
-      {notes.length > 0 && (
-        <ul className="space-y-1">
-          {notes.map((n) => (
-            <li
-              key={n.id}
-              className="flex items-start justify-between gap-2 rounded-md border border-slate-200 bg-white px-3 py-2"
-            >
-              <span className="text-sm text-slate-700">{n.content}</span>
-              <button
-                onClick={() => onChange(notes.filter((x) => x.id !== n.id))}
-                className="shrink-0 text-xs text-slate-400 hover:text-red-600"
-              >
-                Remove
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-      <textarea
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        rows={2}
-        aria-label="New note"
-        placeholder="Add a fact, story, or preference to use on every draft…"
-        className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm"
-      />
-      <button
-        onClick={add}
-        disabled={!text.trim()}
-        className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium hover:bg-slate-100 disabled:opacity-40"
-      >
-        Add note
-      </button>
     </div>
   );
 }

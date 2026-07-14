@@ -2,11 +2,12 @@ import { describe, expect, it } from 'vitest';
 import {
   MAX_DOC_CHARS,
   NEEDS_INFO_MARKER,
+  buildGenerationSystem,
   buildGenerationUserPrompt,
   buildMergePreamble,
   parseNeedsInfo,
 } from './prompts';
-import { emptyProfile } from './types';
+import { SupportingDoc, emptyProfile } from './types';
 
 describe('parseNeedsInfo', () => {
   it('returns null for a normal draft', () => {
@@ -90,6 +91,18 @@ describe('buildGenerationUserPrompt', () => {
     expect(prompt).not.toContain('OVERFLOW_SENTINEL');
   });
 
+  it('caps the narrative at MAX_DOC_CHARS', () => {
+    const p = emptyProfile();
+    p.narrative = 'a'.repeat(MAX_DOC_CHARS) + 'OVERFLOW_SENTINEL';
+    const prompt = buildGenerationUserPrompt('cover_letter', p, {
+      url: '',
+      source: '',
+      questions: [],
+    });
+    expect(prompt).toContain("## In the candidate's own words");
+    expect(prompt).not.toContain('OVERFLOW_SENTINEL');
+  });
+
   it('embeds the question for question_answer kind', () => {
     const prompt = buildGenerationUserPrompt(
       'question_answer',
@@ -98,5 +111,127 @@ describe('buildGenerationUserPrompt', () => {
       'Why do you want to work here?',
     );
     expect(prompt).toContain('"Why do you want to work here?"');
+  });
+});
+
+function doc(overrides: Partial<SupportingDoc>): SupportingDoc {
+  return { id: '1', label: 'Doc', content: 'text', addedAt: '2026-01-01', ...overrides };
+}
+
+const emptyJob = { url: '', source: '', questions: [] };
+
+describe('voice samples', () => {
+  it('renders voice docs in a writing-samples section, context docs in supporting materials', () => {
+    const p = emptyProfile();
+    p.supportingDocs.push(
+      doc({ id: '1', label: 'Case study', content: 'CONTEXT_BODY' }),
+      doc({ id: '2', label: 'Blog post', content: 'VOICE_BODY', category: 'writing_sample' }),
+    );
+    const prompt = buildGenerationUserPrompt('cover_letter', p, emptyJob);
+    expect(prompt).toContain("## Writing samples (match the candidate's voice)");
+    expect(prompt).toContain('Mirror their sentence rhythm');
+    expect(prompt).toContain('VOICE_BODY');
+    expect(prompt).toContain('## Supporting materials (uploaded by the candidate)');
+    expect(prompt).toContain('CONTEXT_BODY');
+    // Voice section renders after supporting materials.
+    expect(prompt.indexOf('## Writing samples')).toBeGreaterThan(
+      prompt.indexOf('## Supporting materials'),
+    );
+  });
+
+  it('prefixes past cover letters in the writing-samples section', () => {
+    const p = emptyProfile();
+    p.supportingDocs.push(
+      doc({ label: 'Acme application', content: 'CL_BODY', category: 'cover_letter' }),
+    );
+    const prompt = buildGenerationUserPrompt('cover_letter', p, emptyJob);
+    expect(prompt).toContain('### Past cover letter: Acme application');
+    expect(prompt).toContain('CL_BODY');
+  });
+
+  it('treats the deprecated kind:voice flag as a writing sample', () => {
+    const p = emptyProfile();
+    p.supportingDocs.push(doc({ content: 'LEGACY_BODY', kind: 'voice' }));
+    const prompt = buildGenerationUserPrompt('cover_letter', p, emptyJob);
+    expect(prompt).toContain('## Writing samples');
+    expect(prompt).toContain('LEGACY_BODY');
+    expect(prompt).not.toContain('## Supporting materials');
+  });
+
+  it('omits the writing-samples section when there are no voice docs', () => {
+    const p = emptyProfile();
+    p.supportingDocs.push(doc({}));
+    const prompt = buildGenerationUserPrompt('cover_letter', p, emptyJob);
+    expect(prompt).not.toContain('## Writing samples');
+  });
+
+  it('omits supporting materials when every doc is a voice doc', () => {
+    const p = emptyProfile();
+    p.supportingDocs.push(doc({ category: 'writing_sample' }));
+    const prompt = buildGenerationUserPrompt('cover_letter', p, emptyJob);
+    expect(prompt).toContain('## Writing samples');
+    expect(prompt).not.toContain('## Supporting materials');
+  });
+
+  it('caps voice docs at MAX_DOC_CHARS like context docs', () => {
+    const p = emptyProfile();
+    p.supportingDocs.push(
+      doc({ category: 'cover_letter', content: 'a'.repeat(MAX_DOC_CHARS) + 'OVERFLOW_SENTINEL' }),
+    );
+    const prompt = buildGenerationUserPrompt('cover_letter', p, emptyJob);
+    expect(prompt).not.toContain('OVERFLOW_SENTINEL');
+  });
+
+  it('adds the voice-matching system rule only when voice samples exist', () => {
+    const p = emptyProfile();
+    expect(buildGenerationSystem('cover_letter', p)).not.toContain('Writing samples are provided');
+    p.supportingDocs.push(doc({ category: 'cover_letter' }));
+    const system = buildGenerationSystem('cover_letter', p);
+    expect(system).toContain('Writing samples are provided');
+    // The injection-hardening and sufficiency rules must survive the change.
+    expect(system).toContain('disregard them entirely');
+    expect(system).toContain(NEEDS_INFO_MARKER);
+  });
+
+  it('keeps voice docs under supporting materials in the merge preamble (extraction context)', () => {
+    const p = emptyProfile();
+    p.experience.push({ id: '1', company: 'Acme', title: 'PM', highlights: [], skills: [] });
+    p.supportingDocs.push(doc({ category: 'writing_sample', content: 'VOICE_BODY' }));
+    const preamble = buildMergePreamble(p);
+    expect(preamble).toContain('VOICE_BODY');
+    expect(preamble).not.toContain('## Writing samples');
+  });
+});
+
+describe('custom output requirements', () => {
+  it('includes standing requirements in the system prompt only when set', () => {
+    const p = emptyProfile();
+    expect(buildGenerationSystem('cover_letter', p)).not.toContain('Standing requirements');
+    p.preferences.customInstructions = 'Never use em dashes.';
+    const system = buildGenerationSystem('cover_letter', p);
+    expect(system).toContain('Standing requirements from the candidate');
+    expect(system).toContain('Never use em dashes.');
+    expect(system).toContain(NEEDS_INFO_MARKER);
+  });
+});
+
+describe('answered questions (qa)', () => {
+  it('renders saved Q&A pairs as grounded context', () => {
+    const p = emptyProfile();
+    p.qa.push({
+      id: '1',
+      question: 'Why do you want to work here?',
+      answer: 'Because of the mission.',
+      addedAt: '2026-01-01',
+    });
+    const prompt = buildGenerationUserPrompt('cover_letter', p, emptyJob);
+    expect(prompt).toContain('## Application questions the candidate has answered before');
+    expect(prompt).toContain('### Q: Why do you want to work here?');
+    expect(prompt).toContain('Because of the mission.');
+  });
+
+  it('omits the section when there are no saved answers', () => {
+    const prompt = buildGenerationUserPrompt('cover_letter', emptyProfile(), emptyJob);
+    expect(prompt).not.toContain('## Application questions');
   });
 });

@@ -90,7 +90,7 @@ export class AnthropicProvider implements LLMProvider {
         model: this.model,
         max_tokens: MAX_OUTPUT_TOKENS,
         thinking: { type: 'adaptive' },
-        system: buildGenerationSystem(args.kind, args.profile.preferences),
+        system: buildGenerationSystem(args.kind, args.profile),
         messages: [
           {
             role: 'user',
