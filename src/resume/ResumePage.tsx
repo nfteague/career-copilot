@@ -36,7 +36,9 @@ function documentTitle(h: ResumeHandoff): string {
   return parts.length ? parts.join('_') : 'Tailored resume';
 }
 
-// Printable inches per letter page after the @page margins (11in − 2×0.6in).
+// Effective content inches per letter page: @page margins are zero (that's
+// what suppresses Chrome's print headers/footers) and the 0.6in paper margins
+// live as print padding, so page one holds ~11 − 1.2 = 9.8in of content.
 const PRINTABLE_IN_PER_PAGE = 9.8;
 const PX_PER_IN = 96;
 

@@ -257,11 +257,16 @@ li {
     display: none;
   }
 
+  /* Paper margins live here as padding, NOT on @page: Chrome renders its
+     print headers/footers (date, title, chrome-extension:// URL, page
+     numbers) inside the @page margin area, so zero @page margins suppress
+     them entirely — no print-dialog settings required. Tradeoff: on a
+     multi-page resume, pages after the first start at the paper edge. */
   .page {
     width: auto;
     min-height: 0;
     margin: 0;
-    padding: 0;
+    padding: 0.6in;
     box-shadow: none;
   }
 
@@ -272,5 +277,5 @@ li {
 
 @page {
   size: letter;
-  margin: 0.6in;
+  margin: 0;
 }
