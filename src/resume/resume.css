@@ -173,6 +173,13 @@ h2 {
   color: #374151;
 }
 
+/* Company/project context on its own row, between the head and the bullets. */
+.entry-desc {
+  margin: 2pt 0 0;
+  font-style: italic;
+  color: #4b5563;
+}
+
 .dates {
   margin-left: auto;
   color: #6b7280;

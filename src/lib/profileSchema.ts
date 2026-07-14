@@ -148,9 +148,10 @@ export const TAILORED_RESUME_SCHEMA = {
           company: { type: 'string' },
           title: { type: 'string' },
           dates: { type: 'string' },
+          description: { type: 'string' },
           bullets: { type: 'array', items: { type: 'string' } },
         },
-        required: ['company', 'title', 'dates', 'bullets'],
+        required: ['company', 'title', 'dates', 'description', 'bullets'],
       },
     },
     projects: {

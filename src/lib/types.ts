@@ -174,7 +174,15 @@ export interface TailoredResume {
     links: string[];
   };
   summary: string;
-  experience: { company: string; title: string; dates: string; bullets: string[] }[];
+  experience: {
+    company: string;
+    title: string;
+    dates: string;
+    // One factual line of company/role context, own row above the bullets;
+    // empty when it wouldn't add signal.
+    description: string;
+    bullets: string[];
+  }[];
   projects: { name: string; description: string; bullets: string[] }[];
   education: { institution: string; degree: string; dates: string }[];
   certifications: string[];

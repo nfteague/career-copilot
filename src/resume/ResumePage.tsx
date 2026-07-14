@@ -142,6 +142,7 @@ export default function ResumePage() {
                   <span className="entry-sub">{e.company}</span>
                   {e.dates.trim() && <span className="dates">{e.dates}</span>}
                 </div>
+                {e.description?.trim() && <p className="entry-desc">{e.description}</p>}
                 {e.bullets.length > 0 && (
                   <ul>
                     {e.bullets.map((b, j) => (
@@ -161,8 +162,8 @@ export default function ResumePage() {
               <div className="entry" key={i}>
                 <div className="entry-head">
                   <strong>{p.name}</strong>
-                  {p.description.trim() && <span className="entry-sub">{p.description}</span>}
                 </div>
+                {p.description?.trim() && <p className="entry-desc">{p.description}</p>}
                 {p.bullets.length > 0 && (
                   <ul>
                     {p.bullets.map((b, j) => (

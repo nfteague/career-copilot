@@ -276,6 +276,7 @@ export function buildResumeTailoringPrompts(
 Hard rules:
 - Every employer, job title, date, institution, degree, and certification must appear VERBATIM as it does in the profile. Never invent, rename, or adjust any of them.
 - Bullets are selected and rephrased from the candidate's real highlights and materials. Preserve quantified results exactly (numbers, percentages, dollar amounts, scale). Never add facts the profile doesn't contain.
+- description (experience and projects): one factual line of company or role/project context drawn from the profile's own summaries — only when it adds signal for THIS role; otherwise an empty string.
 - Mirror the job description's exact terminology for skills the candidate genuinely has (this is what ATS keyword screens match on); omit skills they don't have.
 - Summary: 2-3 lines, specific to this candidate and this role. No clichés ("results-driven professional").
 - Target ONE page of content: 3-5 bullets for recent and relevant roles, fewer or none for older ones. Return sections with nothing relevant as empty arrays.
