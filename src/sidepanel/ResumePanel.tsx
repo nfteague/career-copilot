@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { CareerProfile, JobContext, ResumeSectionKey, Settings } from '../lib/types';
 import {
   EMPTY_HIDDEN,
@@ -32,6 +32,15 @@ export default function ResumePanel({
   const [reviseText, setReviseText] = useState('');
   const [revising, setRevising] = useState(false);
   const [error, setError] = useState('');
+  const reviseRef = useRef<HTMLTextAreaElement>(null);
+
+  // Adding content the AI didn't select needs a model call — so the "+"
+  // affordances seed the revise box (cost stays visible and deliberate)
+  // instead of pretending a checkbox can conjure bullets instantly.
+  function seedRevision(text: string) {
+    setReviseText(text);
+    reviseRef.current?.focus();
+  }
 
   useEffect(() => {
     chrome.storage.session
@@ -59,6 +68,12 @@ export default function ResumePanel({
 
   const { resume } = pending;
   const hidden = pending.hidden ?? EMPTY_HIDDEN;
+  // Profile projects the AI didn't select for this resume — addable via a
+  // seeded revision (matched loosely by name; the model may rephrase).
+  const usedProjectNames = new Set(resume.projects.map((p) => p.name.trim().toLowerCase()));
+  const addableProjects = profile.projects.filter(
+    (p) => p.name.trim() && !usedProjectNames.has(p.name.trim().toLowerCase()),
+  );
 
   async function write(next: PendingResume) {
     setPending(next);
@@ -157,16 +172,33 @@ export default function ResumePanel({
                 {key === 'experience' && sectionOn && (
                   <div className="ml-6 space-y-1">
                     {resume.experience.map((e, i) => (
-                      <label key={i} className="flex items-center gap-2 text-sm text-slate-600">
-                        <input
-                          type="checkbox"
-                          checked={!hidden.experience.includes(i)}
-                          onChange={() => withHidden({ experience: toggle(hidden.experience, i) })}
-                        />
-                        <span className="min-w-0 truncate">
-                          {e.title} — {e.company}
-                        </span>
-                      </label>
+                      <div key={i} className="flex items-center gap-2 text-sm text-slate-600">
+                        <label className="flex min-w-0 flex-1 items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={!hidden.experience.includes(i)}
+                            onChange={() =>
+                              withHidden({ experience: toggle(hidden.experience, i) })
+                            }
+                          />
+                          <span className="min-w-0 truncate">
+                            {e.title} — {e.company}
+                          </span>
+                        </label>
+                        {e.bullets.length === 0 && (
+                          <button
+                            onClick={() =>
+                              seedRevision(
+                                `Give the "${e.title} — ${e.company}" role 1-2 bullets tailored to this job.`,
+                              )
+                            }
+                            title="This role has no bullets — ask the AI to write some (fills the revision box below)"
+                            className="shrink-0 text-xs font-medium text-slate-400 underline hover:text-slate-700"
+                          >
+                            + bullets
+                          </button>
+                        )}
+                      </div>
                     ))}
                   </div>
                 )}
@@ -189,11 +221,33 @@ export default function ResumePanel({
           })}
       </section>
 
+      {addableProjects.length > 0 && (
+        <section className="space-y-1.5">
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Not on this resume
+          </h3>
+          {addableProjects.map((p) => (
+            <button
+              key={p.id}
+              onClick={() =>
+                seedRevision(`Add the project "${p.name}" with 1-2 bullets tailored to this job.`)
+              }
+              title="Ask the AI to add this project (fills the revision box below)"
+              className="flex w-full items-center gap-2 text-left text-sm text-slate-400 hover:text-slate-700"
+            >
+              <span aria-hidden="true">＋</span>
+              <span className="min-w-0 truncate">{p.name}</span>
+            </button>
+          ))}
+        </section>
+      )}
+
       <section className="space-y-2">
         <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
           Revise with AI
         </h3>
         <textarea
+          ref={reviseRef}
           value={reviseText}
           onChange={(e) => setReviseText(e.target.value)}
           disabled={revising}
