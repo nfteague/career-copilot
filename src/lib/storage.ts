@@ -1,4 +1,11 @@
-import { CareerProfile, QuickCopy, Settings, activeCreds, emptyProfile } from './types';
+import {
+  CareerProfile,
+  QuickCopy,
+  Settings,
+  activeCreds,
+  emptyProfile,
+  isProfileEmpty,
+} from './types';
 
 // Thin async wrappers over chrome.storage.local. Everything lives on the user's
 // machine — the API key and the career profile never leave the browser except
@@ -89,8 +96,11 @@ export async function getProfileBackups(): Promise<ProfileBackup[]> {
   return migrated;
 }
 
-export async function backupProfile(reason: BackupReason): Promise<void> {
+// Returns whether a snapshot was actually taken — a backup of an empty
+// profile helps no one, so blanks are skipped.
+export async function backupProfile(reason: BackupReason): Promise<boolean> {
   const current = await getProfile();
+  if (isProfileEmpty(current)) return false;
   const backups = await getProfileBackups();
   const entry: ProfileBackup = {
     id: crypto.randomUUID(),
@@ -99,6 +109,7 @@ export async function backupProfile(reason: BackupReason): Promise<void> {
     profile: current,
   };
   await chrome.storage.local.set({ [BACKUPS_KEY]: [entry, ...backups].slice(0, MAX_BACKUPS) });
+  return true;
 }
 
 export async function hasProfileBackup(): Promise<boolean> {
@@ -113,16 +124,22 @@ export async function restoreProfileBackup(id: string): Promise<CareerProfile | 
   const target = backups.find((b) => b.id === id);
   if (!target) return null;
   const current = await getProfile();
-  const entry: ProfileBackup = {
-    id: crypto.randomUUID(),
-    savedAt: new Date().toISOString(),
-    reason: 'restore',
-    profile: current,
-  };
+  // Same rule as backupProfile: don't save a snapshot of nothing.
+  const withCurrent = isProfileEmpty(current)
+    ? backups
+    : [
+        {
+          id: crypto.randomUUID(),
+          savedAt: new Date().toISOString(),
+          reason: 'restore' as const,
+          profile: current,
+        },
+        ...backups,
+      ];
   const restored = { ...emptyProfile(), ...target.profile };
   await chrome.storage.local.set({
     [PROFILE_KEY]: restored,
-    [BACKUPS_KEY]: [entry, ...backups].slice(0, MAX_BACKUPS),
+    [BACKUPS_KEY]: withCurrent.slice(0, MAX_BACKUPS),
   });
   return restored;
 }

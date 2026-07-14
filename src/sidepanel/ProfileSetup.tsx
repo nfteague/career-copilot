@@ -7,6 +7,7 @@ import {
   SupportingDoc,
   docCategory,
   emptyProfile,
+  isProfileEmpty,
 } from '../lib/types';
 import {
   BackupReason,
@@ -93,7 +94,7 @@ export default function ProfileSetup({
       // Snapshot the latest stored profile (post-model-call, pre-merge) —
       // model-driven merges can drop data, and this makes them undoable
       // without losing edits that landed while the call was in flight.
-      await backupProfile(opts.reason);
+      const backedUp = await backupProfile(opts.reason);
       // The extraction ran against a snapshot of the profile; docs, answers,
       // or narrative context may have been saved elsewhere (Generator, other
       // tabs, another window's panel) while the model call was in flight.
@@ -108,7 +109,7 @@ export default function ProfileSetup({
         ...(owns.narrative ? {} : { narrative: latest.narrative }),
         ...(owns.resume ? {} : { resume: latest.resume }),
       }));
-      setCanUndo(true);
+      if (backedUp) setCanUndo(true);
       onChange(merged);
       // Only jump to Review if the user is still where they started — don't
       // yank them (and any in-progress form state) off a tab they moved to.
@@ -123,13 +124,18 @@ export default function ProfileSetup({
   }
 
   async function restoreBackup(id: string) {
+    const hadContent = !isProfileEmpty(profile);
     const restored = await restoreProfileBackup(id);
     if (restored) {
       // A pending brain-dump draft belongs to the profile being swapped out.
       onDumpDraftChange(null);
       onChange(restored);
       setShowBackups(false);
-      setNotice('Profile restored — the replaced profile was saved as a new backup.');
+      setNotice(
+        hadContent
+          ? 'Profile restored — the replaced profile was saved as a new backup.'
+          : 'Profile restored.',
+      );
     }
   }
 
@@ -182,10 +188,10 @@ export default function ProfileSetup({
   }
 
   async function clearAll() {
-    await backupProfile('clear'); // clearing everything must be undoable too
+    const backedUp = await backupProfile('clear'); // clearing must be undoable
     const fresh = emptyProfile();
     await saveProfile(fresh);
-    setCanUndo(true);
+    if (backedUp) setCanUndo(true);
     onChange(fresh);
     setTab('docs');
   }
@@ -224,15 +230,20 @@ export default function ProfileSetup({
       return;
     }
     setError('');
-    // Import REPLACES the profile wholesale; the pre-import backup is the undo.
-    await backupProfile('import');
+    // Import REPLACES the profile wholesale; the pre-import backup is the
+    // undo (skipped when the previous profile was empty — nothing to keep).
+    const backedUp = await backupProfile('import');
     await saveProfile(imported);
-    setCanUndo(true);
+    if (backedUp) setCanUndo(true);
     // A pending brain-dump draft belongs to the replaced profile — drop it so
     // it can't mask (or later overwrite) the imported narrative.
     onDumpDraftChange(null);
     onChange(imported);
-    setNotice('Profile imported — the previous profile is available under "Restore a backup."');
+    setNotice(
+      backedUp
+        ? 'Profile imported — the previous profile is available under "Restore a backup."'
+        : 'Profile imported.',
+    );
   }
 
   return (

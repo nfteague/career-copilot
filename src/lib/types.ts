@@ -178,6 +178,31 @@ export const DEFAULT_PREFERENCES: Preferences = {
   length: 'standard',
 };
 
+// True when the profile holds nothing a user would miss — used to skip
+// pointless backups of a blank profile.
+export function isProfileEmpty(p: CareerProfile): boolean {
+  const b = p.basics;
+  return (
+    p.experience.length === 0 &&
+    p.education.length === 0 &&
+    p.projects.length === 0 &&
+    p.skills.length === 0 &&
+    p.certifications.length === 0 &&
+    p.supportingDocs.length === 0 &&
+    p.notes.length === 0 &&
+    p.qa.length === 0 &&
+    !p.narrative.trim() &&
+    !p.resume &&
+    !b.name.trim() &&
+    !(b.headline ?? '').trim() &&
+    !(b.summary ?? '').trim() &&
+    !(b.email ?? '').trim() &&
+    !(b.phone ?? '').trim() &&
+    !(b.location ?? '').trim() &&
+    b.links.length === 0
+  );
+}
+
 export function emptyProfile(): CareerProfile {
   return {
     basics: { name: '', links: [] },

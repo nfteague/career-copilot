@@ -122,6 +122,7 @@ describe('backup / restore', () => {
   });
 
   it('does not re-migrate the legacy slot once the list exists (racing reader)', async () => {
+    await updateProfile((p) => ({ ...p, narrative: 'real content' }));
     await backupProfile('import'); // the list now exists
     const legacy = emptyProfile();
     legacy.narrative = 'LEGACY-LEFTOVER';
@@ -131,6 +132,24 @@ describe('backup / restore', () => {
     expect(backups).toHaveLength(1); // leftover cleared, not folded in again
     expect(backups[0].reason).toBe('import');
     expect(store.has('careerProfileBackup')).toBe(false);
+  });
+
+  it('skips backups of an empty profile — a snapshot of nothing helps no one', async () => {
+    expect(await backupProfile('import')).toBe(false);
+    expect(await getProfileBackups()).toHaveLength(0);
+    expect(await hasProfileBackup()).toBe(false);
+
+    // ...and restore does not push an empty current profile onto the list.
+    await updateProfile((p) => ({ ...p, narrative: 'CONTENT' }));
+    expect(await backupProfile('clear')).toBe(true);
+    await saveProfile(emptyProfile()); // the "clear" happened
+    const backups = await getProfileBackups();
+    await restoreProfileBackup(backups[0].id);
+    expect((await getProfile()).narrative).toBe('CONTENT');
+    // Only the original snapshot remains; no 'restore' entry for the blank.
+    const after = await getProfileBackups();
+    expect(after).toHaveLength(1);
+    expect(after[0].reason).toBe('clear');
   });
 });
 
