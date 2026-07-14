@@ -239,6 +239,27 @@ describe('buildResumeTailoringPrompts', () => {
     p.preferences.customInstructions = 'Never use em dashes.';
     expect(buildResumeTailoringPrompts(p, job).system).toContain('Never use em dashes.');
   });
+
+  it('revision mode includes the previous draft and the instruction', () => {
+    const previous = {
+      header: { name: 'Ada', headline: '', location: '', email: '', phone: '', links: [] },
+      summary: 'PREVIOUS_SUMMARY',
+      experience: [],
+      projects: [],
+      education: [],
+      certifications: [],
+      skills: [],
+    };
+    const { system, user } = buildResumeTailoringPrompts(emptyProfile(), job, {
+      previous,
+      instruction: 'Make it more technical.',
+    });
+    expect(user).toContain('PREVIOUS_SUMMARY');
+    expect(user).toContain('Make it more technical.');
+    expect(user).toContain('never license invention');
+    // The full rule set still governs revisions.
+    expect(system).toContain('VERBATIM');
+  });
 });
 
 describe('custom output requirements', () => {

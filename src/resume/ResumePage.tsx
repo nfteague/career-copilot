@@ -1,6 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
-import { ResumeSectionKey, ResumeStyle, TailoredResume } from '../lib/types';
-import { getResumeTemplateChoice, saveResumeTemplateChoice } from '../lib/storage';
+import { JobContext, ResumeSectionKey, ResumeStyle, TailoredResume } from '../lib/types';
+import {
+  getProfile,
+  getResumeTemplateChoice,
+  getSettings,
+  saveResumeTemplateChoice,
+} from '../lib/storage';
+import { getProvider } from '../lib/providers';
+import { friendlyError } from '../lib/errors';
 import {
   DEFAULT_TEMPLATE,
   TEMPLATES,
@@ -17,6 +24,8 @@ interface ResumeHandoff {
   // Feed the document title → Chrome's default Save-as-PDF filename.
   company?: string;
   role?: string;
+  // Lets the in-page "Revise with AI" loop re-tailor against the same job.
+  jobDescription?: string;
 }
 
 // "{name}_{company}_{role}.pdf" — tells the user which file to pick in an
@@ -44,6 +53,15 @@ export default function ResumePage() {
   // Estimated printed page count, measured from the rendered content.
   const [pageCount, setPageCount] = useState(1);
   const pageRef = useRef<HTMLElement>(null);
+  // "Revise with AI" loop state. `revision` keys the article so each revision
+  // remounts it cleanly — React must never reconcile fresh content against a
+  // DOM the user has structurally edited (deleted bullets/sections), which
+  // crashes the commit. Template switches don't touch the key, so they keep
+  // their no-remount, edit-preserving behavior.
+  const [reviseText, setReviseText] = useState('');
+  const [revising, setRevising] = useState(false);
+  const [reviseError, setReviseError] = useState('');
+  const [revision, setRevision] = useState(0);
 
   useEffect(() => {
     (async () => {
@@ -76,11 +94,46 @@ export default function ResumePage() {
 
   useEffect(() => {
     measurePages();
+    if (handoff) document.title = documentTitle(handoff);
   }, [handoff, template]);
 
   function chooseTemplate(id: TemplateId) {
     setTemplate(id);
     void saveResumeTemplateChoice(id);
+  }
+
+  // Iterate on the draft with the model: reads the LATEST profile and
+  // settings from storage, hands the current draft + instruction back to the
+  // provider, and swaps in the result. Replaces in-page edits by design.
+  async function revise() {
+    const instruction = reviseText.trim();
+    if (!instruction || revising || !handoff) return;
+    setRevising(true);
+    setReviseError('');
+    try {
+      const [settings, profile] = await Promise.all([getSettings(), getProfile()]);
+      const provider = await getProvider(settings);
+      const job: JobContext = {
+        url: '',
+        source: '',
+        company: handoff.company,
+        role: handoff.role,
+        jobDescription: handoff.jobDescription,
+        questions: [],
+      };
+      const next = await provider.tailorResume(profile, job, {
+        revision: { previous: handoff.resume, instruction },
+      });
+      const updated: ResumeHandoff = { ...handoff, resume: next };
+      setHandoff(updated);
+      setRevision((r) => r + 1);
+      await chrome.storage.session.set({ pendingResume: updated });
+      setReviseText('');
+    } catch (e) {
+      setReviseError(friendlyError(e));
+    } finally {
+      setRevising(false);
+    }
   }
 
   if (missing) {
@@ -149,9 +202,33 @@ export default function ResumePage() {
           </select>
           <button onClick={() => window.print()}>Print / Save as PDF</button>
         </div>
+        <div className="revise">
+          <input
+            value={reviseText}
+            onChange={(e) => setReviseText(e.target.value)}
+            onKeyDown={(e) => {
+              // isComposing: Enter that confirms an IME composition must not
+              // fire a (paid) revision with half-composed text.
+              if (e.key === 'Enter' && !e.nativeEvent.isComposing) revise();
+            }}
+            disabled={revising}
+            aria-label="Revision request"
+            placeholder='Revise with AI — e.g. "more technical", "lead with the data work", "tighten to fewer bullets"'
+          />
+          <button onClick={revise} disabled={revising || !reviseText.trim()}>
+            {revising ? 'Revising…' : 'Revise'}
+          </button>
+          <span className="revise-hint">Replaces any in-page edits.</span>
+        </div>
+        {reviseError && (
+          <p role="alert" className="revise-error">
+            {reviseError}
+          </p>
+        )}
       </div>
 
       <article
+        key={revision}
         ref={pageRef}
         className={pageClass}
         style={style.accent ? ({ '--accent': style.accent } as React.CSSProperties) : undefined}

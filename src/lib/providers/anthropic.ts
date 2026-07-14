@@ -8,6 +8,7 @@ import {
 import {
   PROFILE_EXTRACTION_SYSTEM,
   RESUME_STYLE_EXTRACTION_SYSTEM,
+  ResumeRevision,
   buildMergePreamble,
   buildGenerationSystem,
   buildGenerationUserPrompt,
@@ -93,9 +94,9 @@ export class AnthropicProvider implements LLMProvider {
   async tailorResume(
     profile: CareerProfile,
     job: JobContext,
-    signal?: AbortSignal,
+    opts: { signal?: AbortSignal; revision?: ResumeRevision } = {},
   ): Promise<TailoredResume> {
-    const { system, user } = buildResumeTailoringPrompts(profile, job);
+    const { system, user } = buildResumeTailoringPrompts(profile, job, opts.revision);
     const res = await this.client.messages.create(
       {
         model: this.model,
@@ -104,7 +105,7 @@ export class AnthropicProvider implements LLMProvider {
         output_config: { format: { type: 'json_schema', schema: TAILORED_RESUME_SCHEMA } },
         messages: [{ role: 'user', content: user }],
       },
-      { signal },
+      { signal: opts.signal },
     );
     const block = res.content.find((b) => b.type === 'text');
     if (!block || block.type !== 'text') throw new Error('No structured output returned.');

@@ -8,6 +8,7 @@ import {
 import {
   PROFILE_EXTRACTION_SYSTEM,
   RESUME_STYLE_EXTRACTION_SYSTEM,
+  ResumeRevision,
   buildMergePreamble,
   buildGenerationSystem,
   buildGenerationUserPrompt,
@@ -103,9 +104,9 @@ export class OpenAIProvider implements LLMProvider {
   async tailorResume(
     profile: CareerProfile,
     job: JobContext,
-    signal?: AbortSignal,
+    opts: { signal?: AbortSignal; revision?: ResumeRevision } = {},
   ): Promise<TailoredResume> {
-    const { system, user } = buildResumeTailoringPrompts(profile, job);
+    const { system, user } = buildResumeTailoringPrompts(profile, job, opts.revision);
     const res = await this.client.chat.completions.create(
       {
         model: this.model,
@@ -119,7 +120,7 @@ export class OpenAIProvider implements LLMProvider {
           { role: 'user', content: user },
         ],
       },
-      { signal },
+      { signal: opts.signal },
     );
     const text = res.choices[0]?.message?.content;
     if (!text) throw new Error('No structured output returned.');

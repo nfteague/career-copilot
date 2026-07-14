@@ -1,4 +1,11 @@
-import { CareerProfile, JobContext, GenerationKind, Preferences, docCategory } from './types';
+import {
+  CareerProfile,
+  JobContext,
+  GenerationKind,
+  Preferences,
+  TailoredResume,
+  docCategory,
+} from './types';
 
 // Per supporting-document cap when injected into the generation prompt. Large
 // enough for a full interview transcript; a backstop, not a normal limit.
@@ -266,9 +273,15 @@ Rules:
 
 // Prompts for tailorResume — a structured-output call (no streaming, no
 // needs-info protocol: a resume is selection over existing data).
+export interface ResumeRevision {
+  previous: TailoredResume;
+  instruction: string;
+}
+
 export function buildResumeTailoringPrompts(
   profile: CareerProfile,
   job: JobContext,
+  revision?: ResumeRevision,
 ): { system: string; user: string } {
   const custom = profile.preferences.customInstructions?.trim();
   const system = `You tailor resumes. You are given a candidate's COMPLETE career history and a specific target role. Your core job is selection and emphasis, never invention: from everything the candidate has done, choose and order what genuinely maps to THIS role.
@@ -295,7 +308,15 @@ ${custom}`
     '\n---\n',
     serializeJob(job),
     '\n---\n',
-    'Produce the tailored resume content for this candidate and this role.',
+    ...(revision
+      ? [
+          'The candidate already has this tailored resume draft:',
+          JSON.stringify(revision.previous, null, 2),
+          '',
+          `Revise it per the candidate's request below. Keep everything else stable, and every hard rule still applies — revisions never license invention.`,
+          `Request: ${revision.instruction}`,
+        ]
+      : ['Produce the tailored resume content for this candidate and this role.']),
   ].join('\n');
 
   return { system, user };

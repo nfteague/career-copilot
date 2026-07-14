@@ -190,6 +190,8 @@ export default function Generator({
           matchStyle: profile.resumeStyle ?? null,
           company: job.company ?? '',
           role: job.role ?? '',
+          // The page's "Revise with AI" loop re-tailors against this JD.
+          jobDescription: job.jobDescription ?? '',
         },
       });
       await chrome.tabs.create({ url: chrome.runtime.getURL('src/resume/index.html') });

@@ -6,6 +6,7 @@ import {
   TailoredResume,
   emptyProfile,
 } from '../types';
+import { ResumeRevision } from '../prompts';
 
 export const MAX_OUTPUT_TOKENS = 8000;
 // Transcribing a long PDF (e.g. an interview transcript) needs far more output
@@ -34,8 +35,13 @@ export interface LLMProvider {
   pdfToText(base64: string): Promise<{ text: string; truncated: boolean }>;
   generate(args: GenerateArgs): Promise<string>;
   // Select and rephrase profile content into a job-tailored resume
-  // (structured output, non-streaming).
-  tailorResume(profile: CareerProfile, job: JobContext, signal?: AbortSignal): Promise<TailoredResume>;
+  // (structured output, non-streaming). Pass `revision` to iterate on a
+  // previous draft instead of starting fresh.
+  tailorResume(
+    profile: CareerProfile,
+    job: JobContext,
+    opts?: { signal?: AbortSignal; revision?: ResumeRevision },
+  ): Promise<TailoredResume>;
   // Describe the visual design of an uploaded PDF resume as renderer tokens
   // (vision + structured output; content is ignored).
   extractResumeStyle(base64: string, signal?: AbortSignal): Promise<ResumeStyle>;
