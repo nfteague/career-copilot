@@ -70,9 +70,12 @@ export interface ProfileBackup {
 }
 
 // Read the backup list, folding the legacy single-slot backup in once.
+// Blank snapshots saved by older builds are filtered out on read.
 export async function getProfileBackups(): Promise<ProfileBackup[]> {
   const stored = await chrome.storage.local.get([BACKUPS_KEY, BACKUP_KEY]);
-  const list = (stored[BACKUPS_KEY] as ProfileBackup[] | undefined) ?? [];
+  const list = ((stored[BACKUPS_KEY] as ProfileBackup[] | undefined) ?? []).filter(
+    (b) => !isProfileEmpty({ ...emptyProfile(), ...b.profile }),
+  );
   const legacy = stored[BACKUP_KEY] as CareerProfile | undefined;
   if (!legacy) return list;
   // Fold the legacy slot in only when the list has never been written — this
