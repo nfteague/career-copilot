@@ -3,7 +3,7 @@ import { defineManifest } from '@crxjs/vite-plugin';
 export default defineManifest({
   manifest_version: 3,
   name: 'Career Copilot',
-  version: '0.2.0',
+  version: '0.3.0',
   // chrome.sidePanel requires 114; everything else is older.
   minimum_chrome_version: '114',
   description:
