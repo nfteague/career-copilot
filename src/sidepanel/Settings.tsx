@@ -16,6 +16,11 @@ const MODELS: Record<Provider, { value: string; label: string }[]> = {
   ],
 };
 
+// Read once — the installed version, straight from the packed manifest.
+const VERSION = chrome.runtime.getManifest().version;
+
+const REPO_URL = 'https://github.com/nfteague/career-copilot';
+
 const PROVIDER_META: Record<Provider, { label: string; keyHint: string; keyPlaceholder: string }> = {
   anthropic: {
     label: 'Anthropic (Claude)',
@@ -196,6 +201,28 @@ export default function SettingsView({
       <p className="text-xs text-slate-400">
         Keys are kept per provider — switching back doesn't lose the other one.
       </p>
+
+      <div className="mt-4 border-t border-slate-200 pt-3">
+        <p className="text-xs text-slate-500">Career Copilot v{VERSION}</p>
+        <p className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs">
+          <a
+            href={`${REPO_URL}/issues/new`}
+            target="_blank"
+            rel="noreferrer"
+            className="font-medium text-slate-500 underline hover:text-slate-800"
+          >
+            Report a bug or request a feature
+          </a>
+          <a
+            href={`${REPO_URL}/blob/main/PRIVACY.md`}
+            target="_blank"
+            rel="noreferrer"
+            className="font-medium text-slate-500 underline hover:text-slate-800"
+          >
+            Privacy policy
+          </a>
+        </p>
+      </div>
     </div>
   );
 }
