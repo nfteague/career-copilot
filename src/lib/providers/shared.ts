@@ -4,6 +4,7 @@ import {
   GenerationKind,
   ResumeStyle,
   TailoredResume,
+  TailoredResumeResult,
   emptyProfile,
 } from '../types';
 import { ResumeRevision } from '../prompts';
@@ -12,6 +13,9 @@ export const MAX_OUTPUT_TOKENS = 8000;
 // Transcribing a long PDF (e.g. an interview transcript) needs far more output
 // room than a draft does.
 export const PDF_TEXT_MAX_TOKENS = 16000;
+// Tailoring runs with reasoning enabled, and reasoning/thinking tokens count
+// against the output budget on both providers — give it extra headroom.
+export const TAILOR_MAX_OUTPUT_TOKENS = 16000;
 
 export interface GenerateArgs {
   kind: GenerationKind;
@@ -36,15 +40,28 @@ export interface LLMProvider {
   generate(args: GenerateArgs): Promise<string>;
   // Select and rephrase profile content into a job-tailored resume
   // (structured output, non-streaming). Pass `revision` to iterate on a
-  // previous draft instead of starting fresh.
+  // previous draft instead of starting fresh. Returns the resume plus the
+  // JD requirements the profile shows no evidence for (see types.ts).
   tailorResume(
     profile: CareerProfile,
     job: JobContext,
     opts?: { signal?: AbortSignal; revision?: ResumeRevision },
-  ): Promise<TailoredResume>;
+  ): Promise<TailoredResumeResult>;
   // Describe the visual design of an uploaded PDF resume as renderer tokens
   // (vision + structured output; content is ignored).
   extractResumeStyle(base64: string, signal?: AbortSignal): Promise<ResumeStyle>;
+}
+
+// The tailoring schema makes the model emit a positioning analysis before the
+// resume: `strategy` (dropped here — it exists to force deliberate selection,
+// not to be shown) and `gaps` (kept — the UI surfaces them). Shared by both
+// providers to split the raw structured output into what the app uses.
+export function toTailoredResult(rawJson: string): TailoredResumeResult {
+  const parsed = JSON.parse(rawJson) as TailoredResume & { strategy?: string; gaps?: unknown };
+  const gaps = Array.isArray(parsed.gaps) ? parsed.gaps.filter(Boolean) : [];
+  delete parsed.strategy;
+  delete parsed.gaps;
+  return { resume: parsed, gaps };
 }
 
 export const PDF_TO_TEXT_PROMPT =

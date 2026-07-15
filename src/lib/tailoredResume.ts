@@ -21,6 +21,9 @@ export interface PendingResume {
   role?: string;
   // Lets "Revise with AI" re-tailor against the same job.
   jobDescription?: string;
+  // JD requirements with no evidence anywhere in the profile — shown as
+  // fill-me-in prompts in the side panel, never rendered on the resume.
+  gaps?: string[];
   // Parts the user toggled off in the side panel.
   hidden?: HiddenResumeParts;
 }

@@ -69,6 +69,7 @@ export default function ResumePanel({
 
   const { resume } = pending;
   const hidden = pending.hidden ?? EMPTY_HIDDEN;
+  const gaps = pending.gaps ?? [];
   // Profile entries the AI didn't put on this resume — addable via a seeded
   // revision (matched loosely; the model may rephrase names). Roles should
   // always be present per the prompt rules, so addableRoles is defensive.
@@ -129,10 +130,10 @@ export default function ResumePanel({
       };
       // Iterate on what the user actually sees — hidden parts stay out, and
       // the revision becomes the new baseline (hidden resets).
-      const next = await provider.tailorResume(profile, job, {
+      const { resume: next, gaps } = await provider.tailorResume(profile, job, {
         revision: { previous: applyHidden(resume, hidden), instruction },
       });
-      await write({ ...pending!, resume: next, hidden: EMPTY_HIDDEN });
+      await write({ ...pending!, resume: next, gaps, hidden: EMPTY_HIDDEN });
       setReviseText('');
     } catch (e) {
       setError(friendlyError(e));
@@ -276,6 +277,34 @@ export default function ResumePanel({
             );
           })}
       </section>
+
+      {gaps.length > 0 && (
+        <section className="space-y-1.5">
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            The job asks for these — your profile doesn't show them
+          </h3>
+          {gaps.map((g) => (
+            <div key={g} className="flex items-center gap-2 text-sm text-slate-600">
+              <span className="min-w-0 flex-1 truncate" title={g}>
+                {g}
+              </span>
+              <button
+                onClick={() =>
+                  seedRevision(`I do have ${g} — add it to the resume. Details: `)
+                }
+                title="If you actually have this, tell the AI about it (fills the revision box below)"
+                className="shrink-0 text-xs font-medium text-slate-400 underline hover:text-slate-700"
+              >
+                + I have this
+              </button>
+            </div>
+          ))}
+          <p className="text-xs text-slate-500">
+            Recruiters and ATS screens check for these. If one is true for you, add it with a
+            sentence of detail — nothing is ever invented on your behalf.
+          </p>
+        </section>
+      )}
 
       <section className="space-y-2">
         <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">

@@ -10,9 +10,9 @@ const MODELS: Record<Provider, { value: string; label: string }[]> = {
     { value: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6 (legacy)' },
   ],
   openai: [
-    { value: 'gpt-5.5', label: 'GPT-5.5 (best quality)' },
-    { value: 'gpt-5.4-mini', label: 'GPT-5.4 mini (faster / cheaper)' },
-    { value: 'gpt-4.1', label: 'GPT-4.1 (legacy)' },
+    { value: 'gpt-5.6-sol', label: 'GPT-5.6 Sol (best quality)' },
+    { value: 'gpt-5.6-terra', label: 'GPT-5.6 Terra (faster / cheaper)' },
+    { value: 'gpt-5.5', label: 'GPT-5.5 (legacy)' },
   ],
 };
 

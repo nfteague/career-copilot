@@ -1,5 +1,10 @@
 import OpenAI from 'openai';
-import { CareerProfile, JobContext, ResumeStyle, TailoredResume } from '../types';
+import {
+  CareerProfile,
+  JobContext,
+  ResumeStyle,
+  TailoredResumeResult,
+} from '../types';
 import {
   PROFILE_EXTRACTION_SCHEMA,
   RESUME_STYLE_SCHEMA,
@@ -20,8 +25,10 @@ import {
   MAX_OUTPUT_TOKENS,
   PDF_TEXT_MAX_TOKENS,
   PDF_TO_TEXT_PROMPT,
+  TAILOR_MAX_OUTPUT_TOKENS,
   ExtractedProfile,
   toProfile,
+  toTailoredResult,
 } from './shared';
 
 // As with Anthropic, this is the user's own key, stored locally, calling OpenAI
@@ -105,12 +112,17 @@ export class OpenAIProvider implements LLMProvider {
     profile: CareerProfile,
     job: JobContext,
     opts: { signal?: AbortSignal; revision?: ResumeRevision } = {},
-  ): Promise<TailoredResume> {
+  ): Promise<TailoredResumeResult> {
     const { system, user } = buildResumeTailoringPrompts(profile, job, opts.revision);
     const res = await this.client.chat.completions.create(
       {
         model: this.model,
-        max_completion_tokens: MAX_OUTPUT_TOKENS,
+        max_completion_tokens: TAILOR_MAX_OUTPUT_TOKENS,
+        // Selection strategy (company read, differentiator, JD coverage)
+        // needs deliberation before the constrained JSON. reasoning_effort
+        // only exists on the reasoning (GPT-5.x) models — the legacy GPT-4.x
+        // option rejects it.
+        ...(this.model.startsWith('gpt-5') ? { reasoning_effort: 'high' as const } : {}),
         response_format: {
           type: 'json_schema',
           json_schema: { name: 'tailored_resume', strict: true, schema: TAILORED_RESUME_SCHEMA },
@@ -124,7 +136,7 @@ export class OpenAIProvider implements LLMProvider {
     );
     const text = res.choices[0]?.message?.content;
     if (!text) throw new Error('No structured output returned.');
-    return JSON.parse(text) as TailoredResume;
+    return toTailoredResult(text);
   }
 
   async extractResumeStyle(base64: string, signal?: AbortSignal): Promise<ResumeStyle> {

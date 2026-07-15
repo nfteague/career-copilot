@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { toProfile } from './shared';
+import { toProfile, toTailoredResult } from './shared';
 import { emptyProfile } from '../types';
 
 describe('toProfile', () => {
@@ -39,5 +39,43 @@ describe('toProfile', () => {
     base.basics.name = 'Existing Name';
     const p = toProfile({ ...extracted, basics: { ...extracted.basics, name: undefined } }, base);
     expect(p.basics.name).toBe('Existing Name');
+  });
+});
+
+describe('toTailoredResult', () => {
+  const resumeFields = {
+    header: { name: 'Ada', headline: '', location: '', email: '', phone: '', links: [] },
+    summary: 'Built X.',
+    experience: [],
+    projects: [],
+    education: [],
+    certifications: [],
+    skills: ['TypeScript'],
+    languages: [],
+  };
+
+  it('splits strategy and gaps out of the resume content', () => {
+    const raw = JSON.stringify({
+      strategy: 'Voice AI company; lead with the audio project.',
+      gaps: ['Node.js', 'Python'],
+      ...resumeFields,
+    });
+    const { resume, gaps } = toTailoredResult(raw);
+    expect(gaps).toEqual(['Node.js', 'Python']);
+    expect(resume).toEqual(resumeFields);
+    expect(resume).not.toHaveProperty('strategy');
+    expect(resume).not.toHaveProperty('gaps');
+  });
+
+  it('normalizes a missing or malformed gaps field to an empty array', () => {
+    expect(toTailoredResult(JSON.stringify({ strategy: 's', ...resumeFields })).gaps).toEqual([]);
+    expect(
+      toTailoredResult(JSON.stringify({ strategy: 's', gaps: 'Node.js', ...resumeFields })).gaps,
+    ).toEqual([]);
+  });
+
+  it('drops empty gap strings', () => {
+    const raw = JSON.stringify({ strategy: 's', gaps: ['', 'Python'], ...resumeFields });
+    expect(toTailoredResult(raw).gaps).toEqual(['Python']);
   });
 });

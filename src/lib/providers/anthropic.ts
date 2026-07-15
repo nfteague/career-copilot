@@ -1,5 +1,10 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { CareerProfile, JobContext, ResumeStyle, TailoredResume } from '../types';
+import {
+  CareerProfile,
+  JobContext,
+  ResumeStyle,
+  TailoredResumeResult,
+} from '../types';
 import {
   PROFILE_EXTRACTION_SCHEMA,
   RESUME_STYLE_SCHEMA,
@@ -20,8 +25,10 @@ import {
   MAX_OUTPUT_TOKENS,
   PDF_TEXT_MAX_TOKENS,
   PDF_TO_TEXT_PROMPT,
+  TAILOR_MAX_OUTPUT_TOKENS,
   ExtractedProfile,
   toProfile,
+  toTailoredResult,
 } from './shared';
 
 // dangerouslyAllowBrowser is intentional: the user's OWN key, stored locally,
@@ -95,12 +102,16 @@ export class AnthropicProvider implements LLMProvider {
     profile: CareerProfile,
     job: JobContext,
     opts: { signal?: AbortSignal; revision?: ResumeRevision } = {},
-  ): Promise<TailoredResume> {
+  ): Promise<TailoredResumeResult> {
     const { system, user } = buildResumeTailoringPrompts(profile, job, opts.revision);
     const res = await this.client.messages.create(
       {
         model: this.model,
-        max_tokens: MAX_OUTPUT_TOKENS,
+        max_tokens: TAILOR_MAX_OUTPUT_TOKENS,
+        // Selection strategy (company read, differentiator, JD coverage) needs
+        // deliberation before the constrained JSON — without thinking the
+        // model pattern-matches on the role title.
+        thinking: { type: 'adaptive' },
         system,
         output_config: { format: { type: 'json_schema', schema: TAILORED_RESUME_SCHEMA } },
         messages: [{ role: 'user', content: user }],
@@ -109,7 +120,7 @@ export class AnthropicProvider implements LLMProvider {
     );
     const block = res.content.find((b) => b.type === 'text');
     if (!block || block.type !== 'text') throw new Error('No structured output returned.');
-    return JSON.parse(block.text) as TailoredResume;
+    return toTailoredResult(block.text);
   }
 
   async extractResumeStyle(base64: string, signal?: AbortSignal): Promise<ResumeStyle> {

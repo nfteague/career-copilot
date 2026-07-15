@@ -19,7 +19,15 @@ const QUICKCOPY_KEY = 'quickCopies';
 const DEFAULT_SETTINGS: Settings = {
   provider: 'anthropic',
   anthropic: { apiKey: '', model: 'claude-opus-4-8' },
-  openai: { apiKey: '', model: 'gpt-5.5' },
+  openai: { apiKey: '', model: 'gpt-5.6-sol' },
+};
+
+// OpenAI models removed from the picker roll forward to the closest current
+// equivalent on read, so a stored choice from an older build never leaves the
+// Settings dropdown blank (both retired options were the cheaper tier).
+const RETIRED_OPENAI_MODELS: Record<string, string> = {
+  'gpt-4.1': 'gpt-5.6-terra',
+  'gpt-5.4-mini': 'gpt-5.6-terra',
 };
 
 export async function getProfile(): Promise<CareerProfile> {
@@ -207,10 +215,12 @@ export async function getSettings(): Promise<Settings> {
     };
   }
 
+  const openai = { ...DEFAULT_SETTINGS.openai, ...stored.openai };
+  openai.model = RETIRED_OPENAI_MODELS[openai.model] ?? openai.model;
   return {
     provider: stored.provider ?? DEFAULT_SETTINGS.provider,
     anthropic: { ...DEFAULT_SETTINGS.anthropic, ...stored.anthropic },
-    openai: { ...DEFAULT_SETTINGS.openai, ...stored.openai },
+    openai,
   };
 }
 

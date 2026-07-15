@@ -123,10 +123,17 @@ export const PROFILE_EXTRACTION_SCHEMA = {
 // Schema for tailorResume — same OpenAI-strict conventions as above (every
 // object additionalProperties: false, all properties required; "absent" is
 // expressed as an empty string or array).
+// `strategy` and `gaps` come FIRST: constrained decoding emits properties in
+// schema order, so the model must commit to a positioning analysis (company,
+// distinctive asks, differentiator, JD-requirement coverage) before writing a
+// single resume line. `strategy` is dropped client-side; `gaps` feeds the
+// side panel (see TailoredResumeResult in types.ts).
 export const TAILORED_RESUME_SCHEMA = {
   type: 'object',
   additionalProperties: false,
   properties: {
+    strategy: { type: 'string' },
+    gaps: { type: 'array', items: { type: 'string' } },
     header: {
       type: 'object',
       additionalProperties: false,
@@ -187,6 +194,8 @@ export const TAILORED_RESUME_SCHEMA = {
     languages: { type: 'array', items: { type: 'string' } },
   },
   required: [
+    'strategy',
+    'gaps',
     'header',
     'summary',
     'experience',

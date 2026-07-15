@@ -234,4 +234,18 @@ describe('getSettings', () => {
     expect(s.anthropic.apiKey).toBe('');
     expect(s.anthropic.model).toBeTruthy();
   });
+
+  it('rolls retired OpenAI models forward and keeps current ones as-is', async () => {
+    store.set('settings', { provider: 'openai', openai: { apiKey: 'sk-x', model: 'gpt-4.1' } });
+    expect((await getSettings()).openai.model).toBe('gpt-5.6-terra');
+
+    store.set('settings', {
+      provider: 'openai',
+      openai: { apiKey: 'sk-x', model: 'gpt-5.4-mini' },
+    });
+    expect((await getSettings()).openai.model).toBe('gpt-5.6-terra');
+
+    store.set('settings', { provider: 'openai', openai: { apiKey: 'sk-x', model: 'gpt-5.5' } });
+    expect((await getSettings()).openai.model).toBe('gpt-5.5');
+  });
 });

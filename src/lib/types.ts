@@ -194,6 +194,15 @@ export interface TailoredResume {
   languages: string[];
 }
 
+// What tailorResume returns to the app: the resume itself plus `gaps` —
+// requirements the job description explicitly asks for that have no evidence
+// anywhere in the profile. Surfaced in the side panel so the candidate can
+// supply what's missing; never invented onto the resume, never rendered.
+export interface TailoredResumeResult {
+  resume: TailoredResume;
+  gaps: string[];
+}
+
 // What the content script extracts from the page the user is on.
 export interface JobContext {
   url: string;

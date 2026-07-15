@@ -180,9 +180,10 @@ export default function Generator({
     setResumeError('');
     try {
       const provider = await getProvider(settings);
-      const tailored = await provider.tailorResume(withPrefs(profile), job);
+      const { resume, gaps } = await provider.tailorResume(withPrefs(profile), job);
       const payload: PendingResume = {
-        resume: tailored,
+        resume,
+        gaps,
         // Design tokens from the user's own uploaded resume, when they exist.
         matchStyle: profile.resumeStyle ?? null,
         // company/role feed the tab title → Chrome's Save-as-PDF filename.
